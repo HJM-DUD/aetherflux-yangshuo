@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>阳朔旅游情报决策台</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <a class="brand" href="/" aria-label="阳朔旅游情报决策台首页">
+          <span class="brand-mark">AF</span>
+          <span>
+            <strong>AetherFlux</strong>
+            <small>Yangshuo Intel</small>
+          </span>
+        </a>
+        <nav class="nav-list">
+          <a href="#selected">精选</a>
+          <a href="#review">待审</a>
+          <a href="#signals">差异</a>
+          <a href="#opportunities">机会</a>
+          <a href="#risks">风险</a>
+          <a href="#sources">接口</a>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <section class="hero-band">
+          <div>
+            <p class="eyebrow">Mac Codex Review Hub</p>
+            <h1>阳朔旅游情报决策台</h1>
+            <p class="hero-copy">面向内容选题、项目判断和风险识别的每日情报审议系统。PC 负责采集清洗，Mac 负责审议与人工确认。</p>
+          </div>
+          <div class="hero-actions" aria-label="流水线操作">
+            <button id="runIngest" type="button">运行采集</button>
+            <button id="runReview" type="button" class="secondary">生成待审稿</button>
+          </div>
+        </section>
+
+        <section class="metric-grid" aria-label="关键指标">
+          <article class="metric"><span id="metricCandidates">0</span><p>候选情报</p></article>
+          <article class="metric"><span id="metricSelected">0</span><p>已确认精选</p></article>
+          <article class="metric"><span id="metricForeign">0</span><p>外网/外语信号</p></article>
+          <article class="metric"><span id="metricRisks">0</span><p>风险预警</p></article>
+        </section>
+
+        <section id="review" class="section-band">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Review Draft</p>
+              <h2>今日待审稿</h2>
+            </div>
+            <span id="reviewStatus" class="pill">等待生成</span>
+          </div>
+          <div id="reviewDraft" class="review-panel empty-state">暂无待审稿。运行采集后生成审议草稿。</div>
+        </section>
+
+        <section id="selected" class="section-band">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Selected Intelligence</p>
+              <h2>今日精选</h2>
+            </div>
+          </div>
+          <div id="selectedList" class="item-list"></div>
+        </section>
+
+        <section id="signals" class="section-band split-layout">
+          <div>
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">Domestic / Foreign</p>
+                <h2>国内外差异</h2>
+              </div>
+            </div>
+            <div id="foreignList" class="item-list compact-list"></div>
+          </div>
+          <div id="opportunities">
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">Project Signals</p>
+                <h2>项目机会</h2>
+              </div>
+            </div>
+            <div id="opportunityList" class="item-list compact-list"></div>
+          </div>
+        </section>
+
+        <section id="risks" class="section-band">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Risk Radar</p>
+              <h2>风险预警</h2>
+            </div>
+          </div>
+          <div id="riskList" class="item-list"></div>
+        </section>
+
+        <section id="sources" class="section-band api-band">
+          <div>
+            <p class="eyebrow">Agent API</p>
+            <h2>后续 agent 接口</h2>
+            <p>内部 API 已按精选、日报、机会、外网信号、风险和证据链拆分，后续内容运营 agent 可直接读取已确认数据。</p>
+          </div>
+          <ul class="api-list">
+            <li><code>/api/selected</code></li>
+            <li><code>/api/daily</code></li>
+            <li><code>/api/opportunities</code></li>
+            <li><code>/api/foreign-signals</code></li>
+            <li><code>/api/risks</code></li>
+            <li><code>/api/evidence/:id</code></li>
+            <li><code>/api/content-briefs</code></li>
+          </ul>
+        </section>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

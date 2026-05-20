@@ -1,0 +1,64 @@
+{
+  "places": [
+    "阳朔",
+    "Yangshuo",
+    "遇龙河",
+    "Yulong River",
+    "西街",
+    "West Street",
+    "兴坪",
+    "Xingping",
+    "十里画廊",
+    "Ten-mile Gallery",
+    "漓江",
+    "Li River",
+    "相公山",
+    "Xiangong Mountain"
+  ],
+  "themes": [
+    {
+      "id": "foreign_signal",
+      "label": "外国游客信号",
+      "keywords": ["yangshuo", "reddit", "tripadvisor", "youtube", "instagram", "tiktok", "foreigner", "foreign tourist", "backpacker", "visa"],
+      "weight": 18
+    },
+    {
+      "id": "domestic_social",
+      "label": "国内社媒趋势",
+      "keywords": ["小红书", "抖音", "大众点评", "微博", "种草", "避雷", "打卡", "爆火"],
+      "weight": 14
+    },
+    {
+      "id": "risk",
+      "label": "风险预警",
+      "keywords": ["投诉", "差评", "宰客", "排队", "堵车", "安全", "confusing", "queue", "overpriced", "scam", "complaint", "unsafe"],
+      "weight": 16
+    },
+    {
+      "id": "opportunity",
+      "label": "项目机会",
+      "keywords": ["旅拍", "骑行", "研学", "亲子", "路线", "vlog", "cycling", "route", "itinerary", "photography", "workation"],
+      "weight": 13
+    },
+    {
+      "id": "traffic_weather",
+      "label": "交通天气",
+      "keywords": ["天气", "暴雨", "水位", "停车", "限行", "traffic", "rain", "flood", "parking"],
+      "weight": 12
+    }
+  ],
+  "platform_weights": {
+    "reddit": 13,
+    "tripadvisor": 14,
+    "youtube": 12,
+    "instagram": 10,
+    "tiktok": 10,
+    "xiaohongshu": 13,
+    "douyin": 12,
+    "weibo": 10,
+    "dianping": 12,
+    "ctrip": 11,
+    "official": 18,
+    "rss": 8
+  }
+}

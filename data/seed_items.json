@@ -1,0 +1,38 @@
+[
+  {
+    "title": "Yangshuo cycling route gets attention on Reddit",
+    "body": "Travelers ask for a safe Yulong River cycling route and mention that bamboo raft ticket instructions are confusing for foreigners.",
+    "source": "Reddit travel discussion",
+    "platform": "reddit",
+    "url": "https://example.com/reddit-yangshuo-cycling",
+    "published_at": "2026-05-20T10:00:00Z",
+    "engagement": {"likes": 82, "comments": 21, "shares": 4}
+  },
+  {
+    "title": "遇龙河竹筏排队久，小红书用户集中吐槽票务指引",
+    "body": "多条笔记提到遇龙河竹筏高峰期排队久，现场指引不清楚，适合进入风险观察和内容解释型选题。",
+    "source": "小红书搜索样本",
+    "platform": "xiaohongshu",
+    "url": "https://example.com/xhs-yulong-queue",
+    "published_at": "2026-05-20T09:30:00Z",
+    "engagement": {"likes": 240, "comments": 52, "shares": 18}
+  },
+  {
+    "title": "外国游客在 Tripadvisor 讨论阳朔西街夜间体验",
+    "body": "Several travelers say West Street is lively but ask for quieter evening routes and better English guidance.",
+    "source": "Tripadvisor Forum",
+    "platform": "tripadvisor",
+    "url": "https://example.com/tripadvisor-west-street-night",
+    "published_at": "2026-05-20T07:00:00Z",
+    "engagement": {"likes": 38, "comments": 14, "shares": 2}
+  },
+  {
+    "title": "十里画廊亲子骑行路线在抖音出现多个收藏增长视频",
+    "body": "近期抖音上多个阳朔十里画廊亲子骑行视频收藏增长，评论区询问租车点、避开车流路线和适合儿童的时间段。",
+    "source": "抖音搜索样本",
+    "platform": "douyin",
+    "url": "https://example.com/douyin-gallery-family-cycling",
+    "published_at": "2026-05-20T06:40:00Z",
+    "engagement": {"likes": 530, "comments": 88, "shares": 41}
+  }
+]
