@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any, Callable, Dict
 from urllib.parse import parse_qs, urlparse
 
 from .api import build_public_payloads
+from .deepseek import DeepSeekConfig
 from .pipeline import run_ingest, run_review
 from .storage import IntelligenceStore
 
@@ -21,6 +23,48 @@ DEFAULT_SEED = Path("data/seed_items.json")
 
 def render_index() -> str:
     return (WEB_DIR / "index.html").read_text(encoding="utf-8")
+
+
+def build_system_status(store: IntelligenceStore) -> Dict[str, Any]:
+    config = DeepSeekConfig.from_env()
+    directions = _load_directions()
+    platforms = directions.get("platform_weights", {})
+    candidates = store.list_candidates(limit=500)
+    return {
+        "project": {
+            "name_zh": "以太通量",
+            "name_en": "AetherFlux",
+            "subproject": "阳朔旅游情报决策系统",
+            "mode": "Codex-controlled daily intelligence center",
+        },
+        "deepseek": {
+            "enabled": config.enabled,
+            "base_url": config.base_url,
+            "model": config.model,
+            "key_source": "DEEPSEEK_API_KEY" if config.enabled else "not_configured",
+        },
+        "first_platform": {
+            "id": "xiaohongshu",
+            "label": "小红书首采",
+            "status": "config_ready",
+            "next_step": "接入真实采集适配器，统一输出 raw item schema。",
+        },
+        "modules": {
+            "collector": {"status": "sample_input", "description": "当前使用样本输入，准备替换为平台采集器。"},
+            "normalization": {"status": "ready", "description": "统一 raw item schema、语言、时间、来源证据。"},
+            "scoring": {"status": "ready", "description": "低 token 规则评分、去重、基础分类。"},
+            "cross_verification": {"status": "ready_for_expansion", "description": "交叉验证中心：claim、支持来源、冲突来源、补证建议。"},
+            "geo_risk": {"status": "ready_for_expansion", "description": "GEO 疑似度：信息污染、标准答案塑造、叙事操控风险概率。"},
+            "bilingual_display": {"status": "ready", "description": "人工审阅和最终呈现阶段中英对照。"},
+        },
+        "counts": {
+            "candidates": len(candidates),
+            "directions_platforms": len(platforms),
+            "themes": len(directions.get("themes", [])),
+            "places": len(directions.get("places", [])),
+        },
+        "platforms": sorted(platforms.keys()),
+    }
 
 
 def run_server(store: IntelligenceStore, host: str = "127.0.0.1", port: int = 8765) -> None:
@@ -83,6 +127,8 @@ def make_handler(store: IntelligenceStore) -> type[BaseHTTPRequestHandler]:
             payloads = build_public_payloads(store)
             if path == "/api/candidates":
                 return {"items": store.list_candidates(limit=300)}
+            if path == "/api/system-status":
+                return build_system_status(store)
             if path == "/api/selected":
                 return {"items": payloads["selected"]}
             if path == "/api/daily":
@@ -139,3 +185,9 @@ def make_handler(store: IntelligenceStore) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(text.encode("utf-8"))
 
     return AetherFluxHandler
+
+
+def _load_directions() -> Dict[str, Any]:
+    if not DEFAULT_DIRECTIONS.exists():
+        return {}
+    return json.loads(DEFAULT_DIRECTIONS.read_text(encoding="utf-8"))

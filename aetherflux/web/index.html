@@ -12,13 +12,15 @@
         <a class="brand" href="/" aria-label="阳朔旅游情报决策台首页">
           <span class="brand-mark">AF</span>
           <span>
-            <strong>AetherFlux</strong>
-            <small>Yangshuo Intel</small>
+            <strong>以太通量</strong>
+            <small>AetherFlux · Yangshuo</small>
           </span>
         </a>
         <nav class="nav-list">
+          <a href="#readiness">准备</a>
           <a href="#selected">精选</a>
           <a href="#review">待审</a>
+          <a href="#verification">验证</a>
           <a href="#signals">差异</a>
           <a href="#opportunities">机会</a>
           <a href="#risks">风险</a>
@@ -29,9 +31,9 @@
       <main class="main">
         <section class="hero-band">
           <div>
-            <p class="eyebrow">Mac Codex Review Hub</p>
+            <p class="eyebrow">AetherFlux · Codex Intelligence Center</p>
             <h1>阳朔旅游情报决策台</h1>
-            <p class="hero-copy">面向内容选题、项目判断和风险识别的每日情报审议系统。PC 负责采集清洗，Mac 负责审议与人工确认。</p>
+            <p class="hero-copy">以太通量主项目内的每日情报中枢。Codex 负责采集调度、DeepSeek V4 智库参考、交叉验证、GEO 疑似度判断、中英对照审阅与人工确认闸门。</p>
           </div>
           <div class="hero-actions" aria-label="流水线操作">
             <button id="runIngest" type="button">运行采集</button>
@@ -46,6 +48,18 @@
           <article class="metric"><span id="metricRisks">0</span><p>风险预警</p></article>
         </section>
 
+        <section id="readiness" class="section-band">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">System Readiness</p>
+              <h2>正式采集准备状态</h2>
+              <p class="section-note">小红书首采已经作为第一平台准备接入，后续平台通过同一 raw item schema 扩展。外文情报会显示英文原文；如果 DeepSeek 未配置，会标记“中文待 DeepSeek 翻译”。</p>
+            </div>
+            <span id="advisorStatus" class="pill">DeepSeek V4 智库层</span>
+          </div>
+          <div id="readinessGrid" class="readiness-grid"></div>
+        </section>
+
         <section id="review" class="section-band">
           <div class="section-head">
             <div>
@@ -55,6 +69,33 @@
             <span id="reviewStatus" class="pill">等待生成</span>
           </div>
           <div id="reviewDraft" class="review-panel empty-state">暂无待审稿。运行采集后生成审议草稿。</div>
+        </section>
+
+        <section id="verification" class="section-band split-layout">
+          <div>
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">Cross Verification Center</p>
+                <h2>交叉验证中心</h2>
+              </div>
+            </div>
+            <div class="focus-panel">
+              <h3>验证规则</h3>
+              <p>每条重要情报都要拆成 claim，再判断是否有独立来源支持、是否存在冲突来源、是否需要补充官方/地图/OTA/外网证据。</p>
+            </div>
+          </div>
+          <div>
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">GEO Risk Judge</p>
+                <h2>GEO 疑似度</h2>
+              </div>
+            </div>
+            <div class="focus-panel">
+              <h3>信息污染风险</h3>
+              <p>只表达概率和风险等级，不做定性指控。重点观察标准答案塑造、话术同质、商业转化指向、跨平台复制和评论冲突。</p>
+            </div>
+          </div>
         </section>
 
         <section id="selected" class="section-band">
@@ -102,9 +143,10 @@
           <div>
             <p class="eyebrow">Agent API</p>
             <h2>后续 agent 接口</h2>
-            <p>内部 API 已按精选、日报、机会、外网信号、风险和证据链拆分，后续内容运营 agent 可直接读取已确认数据。</p>
+            <p>内部 API 已按精选、日报、机会、外网信号、风险、证据链和系统状态拆分，后续内容运营 agent 可读取已确认数据和审议依据。</p>
           </div>
           <ul class="api-list">
+            <li><code>/api/system-status</code></li>
             <li><code>/api/selected</code></li>
             <li><code>/api/daily</code></li>
             <li><code>/api/opportunities</code></li>

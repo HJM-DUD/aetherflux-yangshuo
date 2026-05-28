@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Mapping
 
+from .advisor import AdvisorService
 from .review import create_review_draft
 from .scoring import build_candidate, merge_duplicates
 from .storage import IntelligenceStore
@@ -35,6 +36,8 @@ def run_ingest(store: IntelligenceStore, directions_path: Path | str, seed_path:
 
 def run_review(store: IntelligenceStore, webhook_url: str = "", top_n: int = 20) -> Dict[str, Any]:
     candidates = [candidate for candidate in store.list_candidates(limit=300) if candidate.get("human_status") != "rejected"]
+    candidates = AdvisorService.from_env().enrich_candidates(candidates)
+    store.upsert_candidates(candidates)
     draft = create_review_draft(candidates, top_n=top_n)
     store.save_review_draft(draft)
     if webhook_url:

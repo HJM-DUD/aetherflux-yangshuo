@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from aetherflux.pipeline import run_ingest, run_review
 from aetherflux.storage import IntelligenceStore
@@ -48,8 +49,9 @@ class PipelineTests(unittest.TestCase):
             store = IntelligenceStore(db_path)
             store.initialize()
 
-            ingest_result = run_ingest(store, directions_path, seed_path)
-            draft = run_review(store, webhook_url="")
+            with patch.dict("os.environ", {"DEEPSEEK_API_KEY": ""}):
+                ingest_result = run_ingest(store, directions_path, seed_path)
+                draft = run_review(store, webhook_url="")
 
             self.assertEqual(ingest_result["stored"], 1)
             self.assertEqual(draft["status"], "draft")

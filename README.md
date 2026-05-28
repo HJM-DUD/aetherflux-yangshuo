@@ -1,8 +1,8 @@
 # AetherFlux Yangshuo
 
-阳朔旅游情报决策系统，用于自用内容选题、项目判断、风险识别和后续运营 agent 数据接口。
+“以太通量”当前子项目：阳朔旅游情报决策系统，用于自用内容选题、项目判断、风险识别、交叉验证、GEO 疑似度判断和后续运营 agent 数据接口。
 
-第一版是无外部依赖的 Python 最小闭环：采集样本、脚本化评分去重、Mac Codex 审议草稿、人工确认闸门、网页决策台和内部 JSON API。
+第一版是无外部依赖的 Python 最小闭环：采集样本、脚本化评分去重、Codex 审议草稿、可插拔 DeepSeek V4 智库层、人工确认闸门、网页决策台和内部 JSON API。
 
 ## Quick Start
 
@@ -17,18 +17,6 @@ python3 -m aetherflux.cli serve --host 127.0.0.1 --port 8765
 
 ```text
 http://127.0.0.1:8765
-```
-
-如果服务跑在 PC 上，并且 Mac 通过 Tailscale 访问：
-
-```bash
-python3 -m aetherflux.cli serve --host 0.0.0.0 --port 8765
-```
-
-Mac 访问：
-
-```text
-http://100.123.181.83:8765
 ```
 
 ## Daily Review
@@ -47,6 +35,14 @@ AETHERFLUX_WEBHOOK_URL="https://your-webhook.example.com" scripts/daily_review.s
 
 Webhook payload 是通用 JSON，后续可以接飞书、企业微信、n8n、Dify 或自定义机器人。
 
+DeepSeek 智库层通过本机环境变量启用；不要把密钥写进仓库：
+
+```bash
+export DEEPSEEK_API_KEY="your-local-key"
+export DEEPSEEK_BASE_URL="https://api.deepseek.com"
+export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
+```
+
 ## API
 
 - `GET /api/candidates`：候选池
@@ -64,5 +60,6 @@ Webhook payload 是通用 JSON，后续可以接飞书、企业微信、n8n、Di
 ## Current Boundary
 
 - 采集器目前使用 `data/seed_items.json` 作为样本输入，真实小红书、抖音、Reddit、Tripadvisor、YouTube 等采集器后续逐个替换。
-- 模型审议目前保留为可插拔边界，第一版默认用规则角色生成待审稿，避免每日 token 消耗失控。
+- DeepSeek V4 是可插拔智库层；无 key 或 API 失败时回退规则审议，避免每日流程中断。
+- 中英对照只在人工审阅前和最终呈现前生成，中间处理不做双语扩写以节省 token。
 - 自动流程只生成待审稿，不自动发布；确认后的内容才进入网页精选和正式 API。

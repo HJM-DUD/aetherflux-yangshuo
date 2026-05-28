@@ -5,6 +5,7 @@ const state = {
   opportunities: [],
   risks: [],
   draft: null,
+  status: null,
 };
 
 const endpoints = {
@@ -14,6 +15,7 @@ const endpoints = {
   opportunities: "/api/opportunities",
   risks: "/api/risks",
   draft: "/api/review-drafts/latest",
+  status: "/api/system-status",
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -23,13 +25,14 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function refreshAll() {
-  const [candidates, selected, foreign, opportunities, risks, draft] = await Promise.all([
+  const [candidates, selected, foreign, opportunities, risks, draft, status] = await Promise.all([
     getJson(endpoints.candidates),
     getJson(endpoints.selected),
     getJson(endpoints.foreign),
     getJson(endpoints.opportunities),
     getJson(endpoints.risks),
     getJson(endpoints.draft),
+    getJson(endpoints.status),
   ]);
   state.candidates = candidates.items || [];
   state.selected = selected.items || [];
@@ -37,6 +40,7 @@ async function refreshAll() {
   state.opportunities = opportunities.items || [];
   state.risks = risks.items || [];
   state.draft = draft || {};
+  state.status = status || {};
   render();
 }
 
@@ -71,11 +75,53 @@ function render() {
   setText("metricSelected", state.selected.length);
   setText("metricForeign", state.foreign.length);
   setText("metricRisks", state.risks.length);
+  renderReadiness();
   renderDraft();
   renderList("selectedList", state.selected, false);
   renderList("foreignList", state.foreign, true);
   renderList("opportunityList", state.opportunities, true);
   renderList("riskList", state.risks, false);
+}
+
+function renderReadiness() {
+  const target = document.getElementById("readinessGrid");
+  const advisorStatus = document.getElementById("advisorStatus");
+  const status = state.status || {};
+  const modules = status.modules || {};
+  const deepseek = status.deepseek || {};
+  const firstPlatform = status.first_platform || {};
+  advisorStatus.textContent = deepseek.enabled
+    ? `DeepSeek V4 智库层 · ${deepseek.model || "enabled"}`
+    : "DeepSeek V4 智库层 · 未配置 key";
+  const cards = [
+    {
+      title: "小红书首采",
+      meta: firstPlatform.status || "config_ready",
+      body: firstPlatform.next_step || "准备接入正式采集适配器。",
+    },
+    {
+      title: "交叉验证中心",
+      meta: modules.cross_verification?.status || "ready_for_expansion",
+      body: modules.cross_verification?.description || "claim、支持来源、冲突来源、补证建议。",
+    },
+    {
+      title: "GEO 疑似度",
+      meta: modules.geo_risk?.status || "ready_for_expansion",
+      body: modules.geo_risk?.description || "信息污染与标准答案塑造风险概率。",
+    },
+    {
+      title: "中英对照呈现",
+      meta: modules.bilingual_display?.status || "ready",
+      body: modules.bilingual_display?.description || "人工审阅和最终呈现阶段中英对照。",
+    },
+  ];
+  target.innerHTML = cards.map((card) => `
+    <article class="readiness-card">
+      <span>${escapeHtml(card.meta)}</span>
+      <h3>${escapeHtml(card.title)}</h3>
+      <p>${escapeHtml(card.body)}</p>
+    </article>
+  `).join("");
 }
 
 function renderDraft() {
@@ -120,6 +166,13 @@ function renderList(targetId, items, compact) {
 
 function cardHtml(item, compact, actionable) {
   const signals = item.signals || [];
+  const display = item.display || {};
+  const titleZh = display.title_zh || (item.language === "zh" ? item.title : "");
+  const titleEn = display.title_en || (item.language === "en" ? item.title : "");
+  const summaryZh = display.summary_zh || (item.language === "zh" ? item.summary : "");
+  const summaryEn = display.summary_en || (item.language === "en" ? item.summary : "");
+  const titlePair = displayPair(titleZh, titleEn, item.title, item.language, "title");
+  const summaryPair = displayPair(summaryZh, summaryEn, item.summary, item.language, "summary");
   return `
     <article class="intel-card">
       <div>
@@ -127,17 +180,66 @@ function cardHtml(item, compact, actionable) {
           <span>${escapeHtml(item.platform || "unknown")}</span>
           <span>${escapeHtml(item.language || "unknown")}</span>
           <span>${escapeHtml(item.published_at || "")}</span>
+          <span>${escapeHtml(item.translation_status || "untranslated")}</span>
         </div>
-        <h3>${escapeHtml(item.title || "未命名情报")}</h3>
-        <p>${escapeHtml(item.summary || "")}</p>
+        ${bilingualTitleHtml(titlePair.zh, titlePair.en)}
+        ${bilingualSummaryHtml(summaryPair.zh, summaryPair.en)}
         <div class="tag-row">
           <span class="tag">${escapeHtml(item.category || "general")}</span>
           ${signals.map((signal) => `<span class="tag ${tagClass(signal)}">${escapeHtml(signal)}</span>`).join("")}
         </div>
+        ${intelligenceRiskHtml(item)}
         ${actionable ? actionHtml(item) : evidenceHtml(item)}
       </div>
       <div class="score" aria-label="权重 ${Number(item.score || 0)}">${Number(item.score || 0)}</div>
     </article>
+  `;
+}
+
+function displayPair(zh, en, fallback, language, kind) {
+  const waitingZh = kind === "title" ? "中文待 DeepSeek 翻译" : "中文摘要待 DeepSeek 翻译";
+  const waitingEn = kind === "title" ? "English pending DeepSeek translation" : "English summary pending DeepSeek translation";
+  if (language === "en") {
+    return { zh: zh || waitingZh, en: en || fallback || "" };
+  }
+  if (language === "zh") {
+    return { zh: zh || fallback || "", en: en || waitingEn };
+  }
+  return { zh: zh || fallback || waitingZh, en: en || "" };
+}
+
+function bilingualTitleHtml(titleZh, titleEn) {
+  if (titleZh && titleEn && titleZh !== titleEn) {
+    return `
+      <h3>${escapeHtml(titleZh)}</h3>
+      <p class="translation-line">${escapeHtml(titleEn)}</p>
+    `;
+  }
+  return `<h3>${escapeHtml(titleZh || titleEn || "未命名情报")}</h3>`;
+}
+
+function bilingualSummaryHtml(summaryZh, summaryEn) {
+  if (summaryZh && summaryEn && summaryZh !== summaryEn) {
+    return `
+      <p>${escapeHtml(summaryZh)}</p>
+      <p class="translation-line">${escapeHtml(summaryEn)}</p>
+    `;
+  }
+  return `<p>${escapeHtml(summaryZh || summaryEn || "")}</p>`;
+}
+
+function intelligenceRiskHtml(item) {
+  const cross = item.cross_check || {};
+  const geo = item.geo_risk || {};
+  const notes = item.advisor_notes || {};
+  const reasons = Array.isArray(geo.reasons) ? geo.reasons.slice(0, 2).join("；") : "";
+  return `
+    <div class="intel-assessment">
+      <span>交叉验证：${escapeHtml(cross.status || "unverified")}</span>
+      <span>GEO：${escapeHtml(geo.level || "unknown")} · ${Math.round(Number(geo.probability || 0) * 100)}%</span>
+      ${notes.summary ? `<span>智库：${escapeHtml(notes.summary)}</span>` : ""}
+      ${reasons ? `<span>原因：${escapeHtml(reasons)}</span>` : ""}
+    </div>
   `;
 }
 

@@ -41,6 +41,11 @@ def candidate_to_api(candidate: Mapping[str, Any]) -> Dict[str, Any]:
         "human_status": candidate.get("human_status", "pending"),
         "human_note": candidate.get("human_note", ""),
         "evidence": candidate.get("evidence", []),
+        "display": candidate.get("display", {}),
+        "translation_status": candidate.get("translation_status", "untranslated"),
+        "advisor_notes": candidate.get("advisor_notes", {}),
+        "cross_check": candidate.get("cross_check", {}),
+        "geo_risk": candidate.get("geo_risk", {}),
     }
 
 

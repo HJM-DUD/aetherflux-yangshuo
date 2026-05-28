@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping
 
+from .advisor import apply_fallback_advisor
+
 
 ROLE_LABELS = {
     "chief_editor": "主编 Agent",
@@ -18,7 +20,8 @@ ROLE_LABELS = {
 
 
 def create_review_draft(candidates: Iterable[Mapping[str, Any]], top_n: int = 20) -> Dict[str, Any]:
-    ordered = sorted((dict(candidate) for candidate in candidates), key=lambda item: int(item.get("score", 0)), reverse=True)
+    ready_candidates = apply_fallback_advisor(candidates, reason="")
+    ordered = sorted((dict(candidate) for candidate in ready_candidates), key=lambda item: int(item.get("score", 0)), reverse=True)
     selected = [candidate for candidate in ordered if int(candidate.get("score", 0)) >= 45][:top_n]
     role_assessments = _build_role_assessments(selected, ordered)
     questions = _questions_for_human(selected)
