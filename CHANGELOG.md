@@ -6,6 +6,32 @@
 
 ---
 
+## [V0.2.0] - 2026-05-28
+
+### 新增 / Added
+
+- **本地视频情报收集站**：V0.2.0 聚焦小红书、抖音、视频号的视频、评论、同题讨论和官方信源辅助监控。
+- **端口调整**：`8765` 保留给 Triagent，AetherFlux Web 默认改为 `8788`，本地 worker/API 预留 `8789`。
+- **本地 SQLite 扩展**：新增 mission、官方信源、证据保留、每日资料包、Supabase 轻量日志同步记录等本地表。
+- **硬去重与同题聚类拆分**：新增 `hard_dedupe_key`、`topic_cluster_key`、`copy_similarity`，避免把不同用户讨论同一件事误删。
+- **视频采集基础模型**：新增关键帧时间规划、评论抽样、每日资料包 manifest 等本地采集基础能力。
+- **官方信源复核规则**：mission 的地点、行业、细分变化后，相关官方信源自动标记为 `needs_review`。
+- **每日资料包索引**：新增本地 `daily_bundles` 记录，作为第一部分交给第二部分“超级智脑”的标准交付物。
+- **云日志清理记录**：新增 `cloud_log_syncs`，Supabase Cloud 只允许保存轻量日志索引和清理状态。
+
+### 变更 / Changed
+
+- **Supabase 边界收窄**：不保存原始情报、截图、HTML、音视频、评论全文或转写全文；只用于登录和每日轻量日志索引。
+- **存储路线明确本地优先**：情报数据继续使用本地 SQLite 和本地文件系统，后续可通过配置切到 NAS。
+- **Hermes 定位调整**：Hermes 作为监工和异常分析 agent，不参与机械采集循环，避免 token 消耗失控。
+- **README / README_EN / 架构文档更新**：补充 V0.2.0 本地视频采集站、Mac/PC 部署、资料包和安全边界。
+
+### 安全 / Security
+
+- 原始采集证据默认保留 48 小时，可在后台调整。
+- 清理任务必须逐个删除明确文件路径，不允许批量删除目录。
+- API key、cookie、浏览器 profile、Supabase service key 不写入仓库。
+
 ## [V0.1.0] - 2026-05-20
 
 ### 新增 / Added
@@ -46,4 +72,5 @@
 
 ---
 
+[V0.2.0]: https://github.com/HJM-DUD/aetherflux-yangshuo/releases/tag/v0.2.0
 [V0.1.0]: https://github.com/HJM-DUD/aetherflux-yangshuo/releases/tag/v0.1.0

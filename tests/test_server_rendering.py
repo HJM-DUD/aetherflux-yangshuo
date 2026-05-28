@@ -9,7 +9,7 @@ class ServerRenderingTests(unittest.TestCase):
 
         self.assertIn("阳朔旅游情报决策台", html)
         self.assertIn("以太通量", html)
-        self.assertIn("DeepSeek V4 智库层", html)
+        self.assertIn("智库层 · deepseek-v4-pro", html)
         self.assertIn("交叉验证中心", html)
         self.assertIn("GEO 疑似度", html)
         self.assertIn("小红书首采", html)

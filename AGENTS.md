@@ -24,14 +24,15 @@
 
 ## Current Architecture
 
-取消 PC/Hermes 独立情报中心路线。阳朔情报中心作为“以太通量”主项目内的子项目实施，由 Codex 作为每日情报控制 agent。
+阳朔情报中心作为“以太通量”主项目内的子项目实施，由 Codex 作为每日情报控制 agent。V0.2.0 开始，第一部分“情报收集站”采用本地优先路线：Mac 可本机运行；如 Mac 压力过大，可迁移到 PC worker 24 小时采集，Mac 读取每日资料包进入第二部分。
 
 系统现在按项目内模块分层：
 
 1. **Collector Layer**
    - 负责平台采集和平台适配。
-   - 第一优先平台是小红书，后续扩展抖音、微博、大众点评、携程、Tripadvisor、Reddit、YouTube、Instagram/TikTok、官方公告、天气交通等。
+   - V0.2.0 第一优先平台是小红书、抖音、视频号，重点是视频内容、评论内容、同题讨论和基础官方信源辅助监控。
    - 每个平台必须输出统一 raw item schema，不能让平台差异污染后续流程。
+   - `hard_dedupe_key` 只用于完全重复内容；不同用户讨论同一事件必须保留，并进入 `topic_cluster_key` 同题聚类。
 
 2. **Normalization Layer**
    - 清洗正文、统一时间、识别语言、保存来源链接、保留原始证据。
@@ -71,13 +72,14 @@
 
 ## Implemented MVP
 
-当前已实现一个无外部依赖的 Python 最小闭环：
+当前已实现一个 Python 本地优先闭环，并开始进入 V0.2.0 本地视频情报采集站：
 
 - 低 token 评分与去重：`aetherflux/scoring.py`
 - DeepSeek 配置与 JSON client：`aetherflux/deepseek.py`
 - 智库层回退/合并逻辑：`aetherflux/advisor.py`
 - 多角色审议草稿：`aetherflux/review.py`
 - SQLite 存储与人工决策：`aetherflux/storage.py`
+- V0.2.0 采集基础模型：`aetherflux/collector_model.py`
 - API payload 组装：`aetherflux/api.py`
 - 本地网页/API 服务：`aetherflux/server.py`
 - 命令行入口：`aetherflux/cli.py`
@@ -107,14 +109,16 @@ python3 -m aetherflux.cli review
 启动本地网页：
 
 ```bash
-python3 -m aetherflux.cli serve --host 127.0.0.1 --port 8765
+python3 -m aetherflux.cli serve --host 127.0.0.1 --port 8788
 ```
 
 访问：
 
 ```text
-http://127.0.0.1:8765
+http://127.0.0.1:8788
 ```
+
+`8765` 端口保留给 Triagent；本地 worker/API 预留 `8789`。
 
 每日脚本：
 
@@ -146,6 +150,8 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 - GEO 只表达疑似度和风险概率，不表达事实定罪。
 - DeepSeek V4 作为智库层参与审议，不参与低价值机械清洗。
 - 自动审议但不自动发布，人工确认后才进入网页和正式 API。
+- Supabase Cloud 不保存原始情报、截图、HTML、音视频、评论全文或转写全文；只用于登录和每日轻量日志索引。
+- 原始证据默认本地保留 48 小时，可在后台调整；后续可把数据根目录和证据根目录指向 NAS。
 
 ## Human Gate
 
@@ -176,6 +182,11 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 - `POST /api/decisions`：人工确认、驳回、调整权重
 - `POST /api/run-ingest`：触发采集与基础评分
 - `POST /api/run-review`：生成待审稿
+- `GET/POST /api/admin/retention`：本地证据和云日志索引保留设置
+- `GET/POST /api/admin/official-sources`：官方信源配置
+- `POST /api/admin/missions`：mission 更新，地点/行业/细分变化会标记官方信源需要复核
+- `GET /api/daily-bundles`：每日资料包索引
+- `GET /api/cloud-log-syncs`：Supabase 轻量日志同步和清理记录
 
 候选和精选 payload 可包含：
 
@@ -194,15 +205,15 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 - `data/aetherflux.db` 是本地运行数据库，已被 `.gitignore` 忽略。
 - `artifacts/` 是本地截图/验证产物，已被 `.gitignore` 忽略。
 - 当前网页/API 使用 Python 标准库 HTTP server，适合 MVP 和内网验证；后续可迁移 FastAPI。
-- 真实小红书、抖音、Reddit、Tripadvisor、YouTube 等采集器还未实现。
+- 真实抖音、视频号视频采集器还未完整实现；V0.2.0 已先落地硬去重/同题聚类、视频关键帧计划、评论抽样、官方信源复核和每日资料包元数据。
 
 ## Recommended Next Steps
 
-1. 在项目内实现小红书采集适配器，统一输出 raw item schema。
-2. 增强 Cross Verification Center，把 claim 拆解、来源独立性、支持/冲突证据做成结构化字段。
-3. 把 GEO 疑似度显示继续优化到审阅页和最终精选页。
-4. 增加真实平台信源长期权重、截图证据、网页快照和反馈闭环。
-5. 扩展到抖音、微博、大众点评、携程、Tripadvisor、Reddit、YouTube 等平台。
+1. 完成真实小红书、抖音、视频号登录态视频采集 adapter。
+2. 接入本地 ASR，把视频音频转成分段文字。
+3. 完成 PC worker 部署脚本和每日资料包读取流程。
+4. 完成后台采集控制页、官方信源页、保留时长页和云日志页。
+5. 第二部分“超级智脑”读取每日资料包，做权重、真假、广告和项目价值判断。
 
 ## 版本管理 / Versioning Rules
 

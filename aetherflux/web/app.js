@@ -89,10 +89,15 @@ function renderReadiness() {
   const status = state.status || {};
   const modules = status.modules || {};
   const deepseek = status.deepseek || {};
+  const connection = deepseek.connection || {};
   const firstPlatform = status.first_platform || {};
-  advisorStatus.textContent = deepseek.enabled
-    ? `DeepSeek V4 智库层 · ${deepseek.model || "enabled"}`
-    : "DeepSeek V4 智库层 · 未配置 key";
+  const indicator = ["red", "yellow", "green"].includes(connection.indicator) ? connection.indicator : "red";
+  advisorStatus.className = `pill advisor-pill status-${indicator}`;
+  advisorStatus.title = connection.message || connection.label || "";
+  advisorStatus.innerHTML = `
+    <span class="status-dot" aria-hidden="true"></span>
+    <span>${escapeHtml(`智库层 · ${deepseek.model || "未配置模型"}`)}</span>
+  `;
   const cards = [
     {
       title: "小红书首采",
@@ -182,8 +187,8 @@ function cardHtml(item, compact, actionable) {
           <span>${escapeHtml(item.published_at || "")}</span>
           <span>${escapeHtml(item.translation_status || "untranslated")}</span>
         </div>
-        ${bilingualTitleHtml(titlePair.zh, titlePair.en)}
-        ${bilingualSummaryHtml(summaryPair.zh, summaryPair.en)}
+        ${bilingualTitleHtml(titlePair.original, titlePair.translation)}
+        ${bilingualSummaryHtml(summaryPair.original, summaryPair.translation)}
         <div class="tag-row">
           <span class="tag">${escapeHtml(item.category || "general")}</span>
           ${signals.map((signal) => `<span class="tag ${tagClass(signal)}">${escapeHtml(signal)}</span>`).join("")}
@@ -200,32 +205,32 @@ function displayPair(zh, en, fallback, language, kind) {
   const waitingZh = kind === "title" ? "中文待 DeepSeek 翻译" : "中文摘要待 DeepSeek 翻译";
   const waitingEn = kind === "title" ? "English pending DeepSeek translation" : "English summary pending DeepSeek translation";
   if (language === "en") {
-    return { zh: zh || waitingZh, en: en || fallback || "" };
+    return { original: en || fallback || "", translation: zh || waitingZh };
   }
   if (language === "zh") {
-    return { zh: zh || fallback || "", en: en || waitingEn };
+    return { original: zh || fallback || "", translation: en || waitingEn };
   }
-  return { zh: zh || fallback || waitingZh, en: en || "" };
+  return { original: fallback || zh || en || "", translation: zh && en && zh !== en ? zh : waitingZh };
 }
 
-function bilingualTitleHtml(titleZh, titleEn) {
-  if (titleZh && titleEn && titleZh !== titleEn) {
+function bilingualTitleHtml(original, translation) {
+  if (original && translation && original !== translation) {
     return `
-      <h3>${escapeHtml(titleZh)}</h3>
-      <p class="translation-line">${escapeHtml(titleEn)}</p>
+      <h3 class="original-title">${escapeHtml(original)}</h3>
+      <p class="translation-line">${escapeHtml(translation)}</p>
     `;
   }
-  return `<h3>${escapeHtml(titleZh || titleEn || "未命名情报")}</h3>`;
+  return `<h3 class="original-title">${escapeHtml(original || translation || "未命名情报")}</h3>`;
 }
 
-function bilingualSummaryHtml(summaryZh, summaryEn) {
-  if (summaryZh && summaryEn && summaryZh !== summaryEn) {
+function bilingualSummaryHtml(original, translation) {
+  if (original && translation && original !== translation) {
     return `
-      <p>${escapeHtml(summaryZh)}</p>
-      <p class="translation-line">${escapeHtml(summaryEn)}</p>
+      <p class="original-summary">${escapeHtml(original)}</p>
+      <p class="translation-line">${escapeHtml(translation)}</p>
     `;
   }
-  return `<p>${escapeHtml(summaryZh || summaryEn || "")}</p>`;
+  return `<p class="original-summary">${escapeHtml(original || translation || "")}</p>`;
 }
 
 function intelligenceRiskHtml(item) {
@@ -233,14 +238,24 @@ function intelligenceRiskHtml(item) {
   const geo = item.geo_risk || {};
   const notes = item.advisor_notes || {};
   const reasons = Array.isArray(geo.reasons) ? geo.reasons.slice(0, 2).join("；") : "";
+  const geoProbability = formatProbability(geo.probability, geo.level);
   return `
     <div class="intel-assessment">
       <span>交叉验证：${escapeHtml(cross.status || "unverified")}</span>
-      <span>GEO：${escapeHtml(geo.level || "unknown")} · ${Math.round(Number(geo.probability || 0) * 100)}%</span>
+      <span>GEO：${escapeHtml(geo.level || "unknown")} · ${geoProbability}</span>
       ${notes.summary ? `<span>智库：${escapeHtml(notes.summary)}</span>` : ""}
       ${reasons ? `<span>原因：${escapeHtml(reasons)}</span>` : ""}
     </div>
   `;
+}
+
+function formatProbability(probability, level) {
+  const numeric = Number(probability);
+  if (Number.isFinite(numeric)) {
+    return `${Math.round(numeric * 100)}%`;
+  }
+  const levelMap = { low: "20%", medium: "50%", high: "80%" };
+  return levelMap[String(level || "").toLowerCase()] || "未知";
 }
 
 function actionHtml(item) {

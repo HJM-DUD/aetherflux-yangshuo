@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from aetherflux.advisor import AdvisorService, apply_fallback_advisor
-from aetherflux.deepseek import DeepSeekConfig, load_dotenv_values, parse_json_content
+from aetherflux.deepseek import DeepSeekAdvisorError, DeepSeekConfig, load_dotenv_values, parse_json_content
 
 
 class FakeAdvisorClient:
@@ -44,6 +44,11 @@ class FakeAdvisorClient:
         }
 
 
+class FailingAdvisorClient:
+    def advise_candidates(self, candidates):
+        raise DeepSeekAdvisorError("DeepSeek advisor failed after 3 attempts: timed out")
+
+
 class AdvisorTests(unittest.TestCase):
     def test_fallback_adds_display_cross_check_and_geo_risk_without_model(self):
         candidate = {
@@ -63,6 +68,19 @@ class AdvisorTests(unittest.TestCase):
         self.assertIn("probability", enriched["geo_risk"])
         self.assertEqual(enriched["advisor_notes"]["status"], "disabled")
 
+    def test_fallback_explains_deepseek_timeout(self):
+        candidate = {
+            "id": "cand-1",
+            "title": "Yangshuo cycling route gets attention",
+            "summary": "Foreign travelers ask about the Yulong River route.",
+            "language": "en",
+        }
+
+        enriched = apply_fallback_advisor([candidate], reason="The read operation timed out")[0]
+
+        self.assertEqual(enriched["translation_status"], "untranslated")
+        self.assertIn("请求超时", enriched["advisor_notes"]["summary"])
+
     def test_advisor_service_merges_deepseek_structured_response(self):
         candidate = {
             "id": "cand-1",
@@ -81,6 +99,36 @@ class AdvisorTests(unittest.TestCase):
         self.assertEqual(enriched["geo_risk"]["level"], "medium")
         self.assertEqual(enriched["advisor_notes"]["confidence"], 0.78)
 
+    def test_advisor_service_normalizes_geo_probability_from_level_text(self):
+        class TextProbabilityClient:
+            def advise_candidates(self, candidates):
+                return {
+                    "items": [
+                        {
+                            "id": candidates[0]["id"],
+                            "geo_risk": {"probability": "low", "level": "low", "reasons": []},
+                        }
+                    ]
+                }
+
+        candidate = {"id": "cand-1", "title": "Test", "summary": "Summary", "language": "en"}
+        enriched = AdvisorService(client=TextProbabilityClient()).enrich_candidates([candidate])[0]
+
+        self.assertEqual(enriched["geo_risk"]["probability"], 0.2)
+
+    def test_advisor_service_does_not_fallback_when_deepseek_fails(self):
+        candidate = {"id": "cand-1", "title": "Test", "summary": "Summary", "language": "zh"}
+
+        with self.assertRaisesRegex(DeepSeekAdvisorError, "3 attempts"):
+            AdvisorService(client=FailingAdvisorClient()).enrich_candidates([candidate])
+
+    def test_deepseek_config_defaults_to_five_minute_timeout_and_three_attempts(self):
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}, clear=True):
+            config = DeepSeekConfig.from_env()
+
+        self.assertEqual(config.timeout_seconds, 300)
+        self.assertEqual(config.max_attempts, 3)
+
     def test_deepseek_config_uses_environment_without_hardcoded_key(self):
         with patch.dict(
             os.environ,
@@ -97,6 +145,12 @@ class AdvisorTests(unittest.TestCase):
         self.assertEqual(config.api_key, "test-key")
         self.assertEqual(config.base_url, "https://api.deepseek.com")
         self.assertEqual(config.model, "deepseek-v4-pro")
+
+    def test_deepseek_config_keeps_review_timeout_at_five_minutes(self):
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key", "DEEPSEEK_TIMEOUT_SECONDS": "60"}, clear=True):
+            config = DeepSeekConfig.from_env()
+
+        self.assertEqual(config.timeout_seconds, 300)
 
     def test_parse_json_content_strips_markdown_fences(self):
         payload = parse_json_content('```json\n{"items": [{"id": "cand-1"}]}\n```')

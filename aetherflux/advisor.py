@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Mapping
 
-from .deepseek import DeepSeekClient, DeepSeekConfig
+from .deepseek import DeepSeekAdvisorError, DeepSeekClient, DeepSeekConfig
 
 
 def apply_fallback_advisor(candidates: Iterable[Mapping[str, Any]], reason: str = "DEEPSEEK_API_KEY is not configured") -> List[Dict[str, Any]]:
@@ -28,11 +28,9 @@ class AdvisorService:
         if not base:
             return []
         if self.client is None:
-            return apply_fallback_advisor(base, self.disabled_reason)
+            raise DeepSeekAdvisorError(self.disabled_reason)
 
         response = self.client.advise_candidates(base)
-        if response.get("error") or response.get("disabled"):
-            return apply_fallback_advisor(base, str(response.get("error") or response.get("reason") or self.disabled_reason))
 
         advisor_items = {str(item.get("id")): item for item in response.get("items", []) if isinstance(item, Mapping)}
         enriched = []
@@ -58,12 +56,19 @@ def _with_defaults(candidate: Dict[str, Any], reason: str) -> Dict[str, Any]:
         display.setdefault("summary_en", "")
     candidate["display"] = display
     candidate.setdefault("translation_status", "untranslated")
+    advisor_summary = "使用本地默认审议字段。"
+    if reason:
+        advisor_summary = "DeepSeek 智库层请求失败，当前使用规则审议。"
+        if "timed out" in reason.lower() or "timeout" in reason.lower():
+            advisor_summary = "DeepSeek 智库层请求超时，当前使用规则审议。"
+        elif "not configured" in reason:
+            advisor_summary = "DeepSeek 智库层未启用，当前仅使用规则审议。"
     candidate.setdefault(
         "advisor_notes",
         {
             "status": "disabled" if reason else "fallback",
             "confidence": None,
-            "summary": "DeepSeek 智库层未启用，当前仅使用规则审议。" if reason else "使用本地默认审议字段。",
+            "summary": advisor_summary,
             "opportunities": [],
             "risks": [reason] if reason else [],
             "human_questions": [],
@@ -96,10 +101,35 @@ def _merge_advisor_item(candidate: Dict[str, Any], advisor_item: Mapping[str, An
         if isinstance(value, Mapping):
             merged = dict(candidate.get(key) or {})
             merged.update(dict(value))
+            if key == "geo_risk":
+                merged = _normalize_geo_risk(merged)
             candidate[key] = merged
     if advisor_item.get("translation_status"):
         candidate["translation_status"] = advisor_item["translation_status"]
     return candidate
+
+
+def _normalize_geo_risk(geo_risk: Dict[str, Any]) -> Dict[str, Any]:
+    probability = geo_risk.get("probability")
+    if isinstance(probability, str):
+        normalized = probability.strip().lower()
+        if normalized.endswith("%"):
+            try:
+                geo_risk["probability"] = round(float(normalized.rstrip("%")) / 100, 2)
+                return geo_risk
+            except ValueError:
+                pass
+        level_map = {"low": 0.2, "medium": 0.5, "high": 0.8}
+        if normalized in level_map:
+            geo_risk["probability"] = level_map[normalized]
+            geo_risk.setdefault("level", normalized)
+            return geo_risk
+    try:
+        geo_risk["probability"] = round(float(probability), 2)
+    except (TypeError, ValueError):
+        level = str(geo_risk.get("level", "low")).lower()
+        geo_risk["probability"] = {"low": 0.2, "medium": 0.5, "high": 0.8}.get(level, 0.0)
+    return geo_risk
 
 
 def _fallback_geo_probability(candidate: Mapping[str, Any]) -> float:

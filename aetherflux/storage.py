@@ -50,6 +50,70 @@ class IntelligenceStore:
                     status TEXT NOT NULL,
                     payload_json TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS missions (
+                    id TEXT PRIMARY KEY,
+                    place TEXT NOT NULL,
+                    industry TEXT NOT NULL,
+                    segments_json TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS official_sources (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    recommended_by TEXT DEFAULT 'manual',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(mission_id) REFERENCES missions(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS retention_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    evidence_hours INTEGER NOT NULL,
+                    cloud_log_months INTEGER NOT NULL DEFAULT 3,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS media_assets (
+                    id TEXT PRIMARY KEY,
+                    item_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL DEFAULT 0,
+                    captured_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS daily_bundles (
+                    id TEXT PRIMARY KEY,
+                    bundle_date TEXT NOT NULL,
+                    node_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL DEFAULT 0,
+                    manifest_json TEXT NOT NULL,
+                    cloud_log_status TEXT NOT NULL DEFAULT 'pending',
+                    consumed_at TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS cloud_log_syncs (
+                    id TEXT PRIMARY KEY,
+                    action TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
                 """
             )
 
@@ -177,6 +241,173 @@ class IntelligenceStore:
             (candidate_id,),
         )
         return rows[0] if rows else {}
+
+    def upsert_mission(self, mission_id: str, place: str, industry: str, segments: Iterable[str]) -> None:
+        segments_payload = list(segments)
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT place, industry, segments_json FROM missions WHERE id = ?",
+                (mission_id,),
+            ).fetchone()
+            changed = False
+            if existing:
+                changed = (
+                    existing["place"] != place
+                    or existing["industry"] != industry
+                    or json.loads(existing["segments_json"]) != segments_payload
+                )
+            conn.execute(
+                """
+                INSERT INTO missions (id, place, industry, segments_json, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    place=excluded.place,
+                    industry=excluded.industry,
+                    segments_json=excluded.segments_json,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (mission_id, place, industry, json.dumps(segments_payload, ensure_ascii=False)),
+            )
+            if changed:
+                conn.execute(
+                    "UPDATE official_sources SET status = 'needs_review', updated_at = CURRENT_TIMESTAMP WHERE mission_id = ?",
+                    (mission_id,),
+                )
+
+    def upsert_official_source(
+        self,
+        source_id: str,
+        mission_id: str,
+        url: str,
+        label: str,
+        status: str = "active",
+        recommended_by: str = "manual",
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO official_sources (id, mission_id, url, label, status, recommended_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    mission_id=excluded.mission_id,
+                    url=excluded.url,
+                    label=excluded.label,
+                    status=excluded.status,
+                    recommended_by=excluded.recommended_by,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (source_id, mission_id, url, label, status, recommended_by),
+            )
+
+    def list_official_sources(self, mission_id: str = "") -> List[Dict[str, Any]]:
+        query = "SELECT * FROM official_sources"
+        params: tuple[Any, ...] = ()
+        if mission_id:
+            query += " WHERE mission_id = ?"
+            params = (mission_id,)
+        query += " ORDER BY updated_at DESC, label ASC"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def set_retention_hours(self, hours: int, cloud_log_months: Optional[int] = None) -> None:
+        evidence_hours = max(1, int(hours))
+        current_cloud_months = self.get_cloud_log_months()
+        cloud_months = max(1, int(cloud_log_months if cloud_log_months is not None else current_cloud_months))
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO retention_settings (id, evidence_hours, cloud_log_months, updated_at)
+                VALUES (1, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    evidence_hours=excluded.evidence_hours,
+                    cloud_log_months=excluded.cloud_log_months,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (evidence_hours, cloud_months),
+            )
+
+    def get_retention_hours(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT evidence_hours FROM retention_settings WHERE id = 1").fetchone()
+        return int(row["evidence_hours"]) if row else 48
+
+    def get_cloud_log_months(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT cloud_log_months FROM retention_settings WHERE id = 1").fetchone()
+        return int(row["cloud_log_months"]) if row else 3
+
+    def save_daily_bundle(self, bundle: Mapping[str, Any]) -> None:
+        payload = dict(bundle)
+        manifest = payload.get("manifest_json", {})
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO daily_bundles (
+                    id, bundle_date, node_id, path, sha256, size_bytes, manifest_json, cloud_log_status, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    bundle_date=excluded.bundle_date,
+                    node_id=excluded.node_id,
+                    path=excluded.path,
+                    sha256=excluded.sha256,
+                    size_bytes=excluded.size_bytes,
+                    manifest_json=excluded.manifest_json,
+                    cloud_log_status=excluded.cloud_log_status,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    payload["id"],
+                    payload.get("bundle_date", ""),
+                    payload.get("node_id", ""),
+                    payload.get("path", ""),
+                    payload.get("sha256", ""),
+                    int(payload.get("size_bytes", 0)),
+                    json.dumps(manifest, ensure_ascii=False),
+                    payload.get("cloud_log_status", "pending"),
+                ),
+            )
+
+    def list_daily_bundles(self, limit: int = 30) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM daily_bundles ORDER BY bundle_date DESC, created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        bundles = []
+        for row in rows:
+            payload = dict(row)
+            payload["manifest_json"] = json.loads(payload["manifest_json"])
+            bundles.append(payload)
+        return bundles
+
+    def record_cloud_log_sync(self, sync_id: str, action: str, status: str, payload: Mapping[str, Any]) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO cloud_log_syncs (id, action, status, payload_json, created_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    action=excluded.action,
+                    status=excluded.status,
+                    payload_json=excluded.payload_json
+                """,
+                (sync_id, action, status, json.dumps(dict(payload), ensure_ascii=False)),
+            )
+
+    def list_cloud_log_syncs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM cloud_log_syncs ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        syncs = []
+        for row in rows:
+            payload = dict(row)
+            payload["payload_json"] = json.loads(payload["payload_json"])
+            syncs.append(payload)
+        return syncs
 
     def _fetch_candidates(self, query: str, params: tuple[Any, ...]) -> List[Dict[str, Any]]:
         with self._connect() as conn:

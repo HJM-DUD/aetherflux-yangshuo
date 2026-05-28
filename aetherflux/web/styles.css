@@ -248,11 +248,40 @@ h3 {
   display: inline-flex;
   min-height: 32px;
   align-items: center;
+  gap: 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0 12px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.advisor-pill {
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 3px rgba(155, 176, 187, 0.12);
+}
+
+.status-red .status-dot {
+  background: var(--red);
+  box-shadow: 0 0 0 3px rgba(227, 109, 109, 0.16);
+}
+
+.status-yellow .status-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px rgba(229, 180, 84, 0.16);
+}
+
+.status-green .status-dot {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(134, 211, 154, 0.16);
 }
 
 .review-panel,
@@ -356,9 +385,15 @@ h3 {
   color: var(--soft);
 }
 
-.translation-line {
-  color: var(--muted);
+.original-title,
+.original-summary {
+  font-weight: 750;
+}
+
+.intel-card .translation-line {
+  color: rgba(155, 176, 187, 0.78);
   font-size: 14px;
+  font-weight: 400;
 }
 
 .meta-row,

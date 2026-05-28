@@ -2,23 +2,33 @@
 
 ## 项目内模块架构
 
-阳朔旅游情报中心是“以太通量 / AetherFlux_yitaitongliang”主项目内的子项目。取消 PC/Hermes 独立情报中心路线，由 Codex 作为每日情报控制 agent，DeepSeek V4 作为可插拔智库层。
+阳朔旅游情报中心是“以太通量 / AetherFlux_yitaitongliang”主项目内的子项目。V0.2.0 聚焦本地优先的视频情报收集站：小红书、抖音、视频号的视频、评论、同题讨论信号、官方信源辅助监控和每日资料包。
+
+`8765` 保留给 Triagent，AetherFlux Web 默认使用 `8788`，本地 worker/API 预留 `8789`。
 
 ## 数据流
 
-1. `config/directions.json` 定义平台权重、地点、主题、关键词。
-2. 采集器产出原始 JSON 条目。
-3. `aetherflux.scoring` 完成语言识别、主题命中、基础权重、证据链。
-4. `aetherflux.advisor` 在审阅前补充中英展示、交叉验证建议、GEO 疑似度和智库意见。
-5. `aetherflux.storage` 保存候选池、人工决策和审议草稿。
-6. `aetherflux.review` 生成待审稿，默认不自动发布。
-7. `aetherflux.server` 提供网页后台和 agent API。
+1. 后台配置 mission：地点、行业、细分、关键词、排除词、指定账号和官方信源。
+2. 本地 worker 执行平台采集：搜索列表、详情页、视频处理、评论抽样、官方信源监控。
+3. 采集器输出统一 raw item schema，并写入本地 SQLite。
+4. `hard_dedupe_key` 只合并完全重复内容；`topic_cluster_key` 聚合同题讨论但保留原始条目。
+5. 视频证据保存为本地封面、关键帧、音频、字幕/转写索引。
+6. 每天生成 `daily_bundle_YYYY-MM-DD`，供第二部分“超级智脑”读取。
+7. Supabase Cloud 只同步每日轻量日志索引，不保存原始情报数据。
 
 ## DeepSeek 智库层
 
 DeepSeek V4 通过 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL_ADVISOR` 启用。默认模型为 `deepseek-v4-pro`。无 key 或 API 失败时，系统必须回退本地规则审议。
 
 智库层只参与审议、交叉验证、GEO 疑似度和最终呈现润色，不参与普通清洗、去重、关键词匹配等低价值任务。
+
+## V0.2.0 本地采集站
+
+- 数据库继续使用本地 SQLite，不迁移到 Supabase 情报库。
+- 原始情报、评论、转写、截图、HTML、视频帧和音频只存本地文件系统，后续可通过 `AETHERFLUX_DATA_ROOT` / `AETHERFLUX_EVIDENCE_ROOT` 切到 NAS。
+- Supabase Cloud 只用于登录和 `collection_daily_logs` 轻量索引；默认保留最近 3 个自然月。
+- 官方信源单独管理，绑定 mission；地点、行业或细分变化后必须重新确认，不能沿用上一个地区地址。
+- Mac/PC 双部署：Mac 可运行完整采集；如果压力过大，PC worker 负责 24 小时采集和每日资料包生成，Mac 读取资料包进入第二部分。
 
 ## 中英对照
 
@@ -39,7 +49,8 @@ DeepSeek V4 通过 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL_AD
 
 ## 后续扩展点
 
-- 为每个平台增加独立 collector，统一输出 seed item shape。
+- 为每个平台增加独立 collector，统一输出 raw item shape；小红书 collector 已先接入时间窗口、硬去重和水位线状态。
+- 扩展抖音和视频号视频采集，重点保存关键帧、音频转写、评论和同题聚类。
 - 接入 DeepSeek，把复杂跨语言判断、冲突裁决和日报主编点评放到模型层。
 - 增强交叉验证中心，结构化保存 claim、支持证据、冲突证据和需要补充的来源。
 - 增强 GEO 风险判断，持续校准 `probability`、`level` 和 `reasons`。

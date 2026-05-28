@@ -8,7 +8,15 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping
+
+STATUS_PATH = Path("artifacts/deepseek_status.json")
+
+
+class DeepSeekAdvisorError(RuntimeError):
+    """Raised when the mandatory DeepSeek advisor gate cannot complete."""
 
 
 @dataclass(frozen=True)
@@ -16,7 +24,8 @@ class DeepSeekConfig:
     api_key: str = ""
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-pro"
-    timeout_seconds: int = 45
+    timeout_seconds: int = 300
+    max_attempts: int = 3
 
     @property
     def enabled(self) -> bool:
@@ -30,7 +39,8 @@ class DeepSeekConfig:
             api_key=source.get("DEEPSEEK_API_KEY", "").strip(),
             base_url=source.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/"),
             model=source.get("DEEPSEEK_MODEL_ADVISOR", "deepseek-v4-pro").strip() or "deepseek-v4-pro",
-            timeout_seconds=int(source.get("DEEPSEEK_TIMEOUT_SECONDS", "45") or "45"),
+            timeout_seconds=300,
+            max_attempts=int(source.get("DEEPSEEK_MAX_ATTEMPTS", "3") or "3"),
         )
 
 
@@ -40,7 +50,7 @@ class DeepSeekClient:
 
     def advise_candidates(self, candidates: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
         if not self.config.enabled:
-            return {"items": [], "disabled": True, "reason": "DEEPSEEK_API_KEY is not configured"}
+            raise DeepSeekAdvisorError("DeepSeek is required but DEEPSEEK_API_KEY is not configured")
         prompt = build_advisor_prompt(list(candidates))
         return self.request_json(prompt)
 
@@ -71,17 +81,69 @@ class DeepSeekClient:
             },
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.config.timeout_seconds) as response:
-                data = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            return {"items": [], "error": str(exc)}
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-        try:
-            parsed = parse_json_content(content)
-        except ValueError as exc:
-            return {"items": [], "error": str(exc), "raw_content": content[:1000]}
-        return parsed if isinstance(parsed, dict) else {"items": [], "error": "advisor response is not an object"}
+        last_error = ""
+        for attempt in range(1, self.config.max_attempts + 1):
+            record_deepseek_status(
+                {
+                    "state": "awaiting_reply",
+                    "model": self.config.model,
+                    "base_url": self.config.base_url,
+                    "checked_at": utc_now(),
+                    "attempt": attempt,
+                    "max_attempts": self.config.max_attempts,
+                    "timeout_seconds": self.config.timeout_seconds,
+                }
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=self.config.timeout_seconds) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+                parsed = parse_json_content(content)
+            except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+                last_error = str(exc)
+                record_deepseek_status(
+                    {
+                        "state": "error",
+                        "model": self.config.model,
+                        "base_url": self.config.base_url,
+                        "checked_at": utc_now(),
+                        "attempt": attempt,
+                        "max_attempts": self.config.max_attempts,
+                        "timeout_seconds": self.config.timeout_seconds,
+                        "error": last_error[:500],
+                    }
+                )
+                continue
+            if not isinstance(parsed, dict):
+                last_error = "advisor response is not an object"
+                continue
+            record_deepseek_status(
+                {
+                    "state": "connected",
+                    "model": self.config.model,
+                    "base_url": self.config.base_url,
+                    "checked_at": utc_now(),
+                    "replied_at": utc_now(),
+                    "attempt": attempt,
+                    "max_attempts": self.config.max_attempts,
+                }
+            )
+            return parsed
+        record_deepseek_status(
+            {
+                "state": "failed_after_retries",
+                "model": self.config.model,
+                "base_url": self.config.base_url,
+                "checked_at": utc_now(),
+                "attempt": self.config.max_attempts,
+                "max_attempts": self.config.max_attempts,
+                "timeout_seconds": self.config.timeout_seconds,
+                "error": last_error[:500],
+            }
+        )
+        raise DeepSeekAdvisorError(
+            f"DeepSeek advisor failed after {self.config.max_attempts} attempts: {last_error or 'unknown error'}"
+        )
 
 
 def parse_json_content(content: str) -> Dict[str, Any]:
@@ -113,6 +175,28 @@ def load_dotenv_values(path: str = ".env") -> Dict[str, str]:
             if key:
                 values[key] = value
     return values
+
+
+def read_deepseek_status(path: Path = STATUS_PATH) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def record_deepseek_status(status: Mapping[str, Any], path: Path = STATUS_PATH) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dict(status), ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        return
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def build_advisor_prompt(candidates: list[Mapping[str, Any]]) -> str:
