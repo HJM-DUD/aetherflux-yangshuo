@@ -25,15 +25,19 @@ DEFAULT_WORKER_API_PORT = 8789
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="AetherFlux Yangshuo intelligence system")
+    parser = argparse.ArgumentParser(description="AetherFlux local-first intelligence system")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite database path")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    ingest = subcommands.add_parser("ingest", help="Run low-token scripted ingest")
-    ingest.add_argument("--directions", default=str(DEFAULT_DIRECTIONS))
-    ingest.add_argument("--seed", default=str(DEFAULT_SEED))
+    ingest = subcommands.add_parser(
+        "ingest",
+        help="Ingest a local JSON feed or seed file; not live platform crawling",
+        description="Ingest a local JSON feed or seed file into SQLite. This is not live platform crawling.",
+    )
+    ingest.add_argument("--directions", default=str(DEFAULT_DIRECTIONS), help="Local directions JSON")
+    ingest.add_argument("--seed", default=str(DEFAULT_SEED), help="Local JSON feed or seed file")
 
-    review = subcommands.add_parser("review", help="Generate Mac Codex review draft")
+    review = subcommands.add_parser("review", help="Generate a review draft from local SQLite candidates")
     review.add_argument("--webhook-url", default="")
     review.add_argument("--top-n", type=int, default=20)
 
@@ -41,14 +45,22 @@ def main() -> None:
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=DEFAULT_DASHBOARD_PORT)
 
-    xhs = subcommands.add_parser("xhs", help="Run Xiaohongshu collection")
+    xhs = subcommands.add_parser("xhs", help="Process Xiaohongshu JSON feed snapshots")
     xhs_subcommands = xhs.add_subparsers(dest="xhs_command", required=True)
 
-    xhs_backfill = xhs_subcommands.add_parser("backfill", help="Collect recent Xiaohongshu notes")
+    xhs_backfill = xhs_subcommands.add_parser(
+        "backfill",
+        help="Process recent Xiaohongshu JSON feed snapshots; not a live Xiaohongshu crawler",
+        description="Process recent Xiaohongshu JSON feed snapshots. This command is not a live Xiaohongshu crawler.",
+    )
     xhs_backfill.add_argument("--days", type=int, default=7)
     _add_xhs_common_args(xhs_backfill)
 
-    xhs_daily = xhs_subcommands.add_parser("daily", help="Collect Xiaohongshu notes newer than the saved watermark")
+    xhs_daily = xhs_subcommands.add_parser(
+        "daily",
+        help="Process Xiaohongshu JSON feed items newer than the saved watermark; not a live Xiaohongshu crawler",
+        description="Process Xiaohongshu JSON feed items newer than the saved watermark. This command is not a live Xiaohongshu crawler.",
+    )
     _add_xhs_common_args(xhs_daily)
 
     args = parser.parse_args()
@@ -77,7 +89,7 @@ def main() -> None:
 
 
 def _add_xhs_common_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--source", default=str(DEFAULT_XHS_SOURCE), help="JSON feed captured by a logged-in browser driver")
+    parser.add_argument("--source", default=str(DEFAULT_XHS_SOURCE), help="JSON feed captured by a separate browser driver or manual export")
     parser.add_argument("--output", default=str(DEFAULT_XHS_OUTPUT), help="Raw item JSON output for later ingest")
     parser.add_argument("--state", default=str(DEFAULT_XHS_STATE), help="Persistent XHS collection state")
     parser.add_argument("--now", default="", help="Override current UTC time for deterministic runs")
