@@ -28,6 +28,19 @@ class CLIHelpTests(unittest.TestCase):
         self.assertIn("JSON feed", output)
         self.assertIn("not a live Xiaohongshu crawler", output)
 
+    def test_live_help_exposes_xiaohongshu_and_douyin_only(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "aetherflux.cli", "live", "--help"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        output = " ".join(result.stdout.split())
+        self.assertIn("xiaohongshu", output)
+        self.assertIn("douyin", output)
+        self.assertNotIn("wechat_channels", output)
+
 
 if __name__ == "__main__":
     unittest.main()

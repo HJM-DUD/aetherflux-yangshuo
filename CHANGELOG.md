@@ -6,6 +6,14 @@
 
 ---
 
+## [Unreleased]
+
+### 新增 / Added
+
+- 新增小红书/抖音登录态 Chrome CDP 采集 adapter 初版：支持搜索页可见卡片、前 N 条详情页轻量抽取、评论样本、视频关键帧计划字段。
+- 新增 `python3 -m aetherflux.cli live {xiaohongshu,douyin}` 命令；视频号因无网页端内容入口暂时跳过。
+- 新增 `scripts/open_chrome_cdp.sh`，用于打开 AetherFlux 专用 Chrome 采集 profile 和 `9222` 调试端口。
+
 ## [V0.2.0] - 2026-05-28
 
 ### 新增 / Added

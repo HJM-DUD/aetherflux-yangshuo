@@ -66,6 +66,37 @@ python3 -m aetherflux.cli ingest --seed artifacts/xhs_raw_items.json
 
 注意：这里的 `xhs backfill` **不是直接登录小红书并自动爬取真实平台**。它目前读取的是已经落盘的 JSON 数据，用来测试后续真实采集 adapter 的入库流程。
 
+## 登录态采集适配器
+
+V0.2.0 之后已经新增小红书和抖音的登录态浏览器 adapter。它通过 Chrome DevTools Protocol 连接一个你主动打开的 Chrome 窗口，不读取 cookie 文件，不绕验证码，不支持视频号网页端。
+
+先打开专用 Chrome 采集窗口：
+
+```bash
+scripts/open_chrome_cdp.sh
+```
+
+然后在这个新开的 Chrome 窗口里手动登录小红书和抖音。
+
+采集小红书搜索结果：
+
+```bash
+python3 -m aetherflux.cli live xiaohongshu --query "阳朔 竹筏" --max-items 20 --detail-limit 5 --output artifacts/live_xhs_yangshuo.json
+```
+
+采集抖音搜索结果：
+
+```bash
+python3 -m aetherflux.cli live douyin --query "阳朔 西街" --max-items 20 --detail-limit 5 --output artifacts/live_douyin_yangshuo.json
+```
+
+说明：
+
+- `--max-items` 控制搜索结果列表采集数量。
+- `--detail-limit` 控制打开详情页的前 N 条，默认 5，建议不要一次开太多。
+- 如果提示无法连接 Chrome remote debugging，说明 `9222` 调试端口没有打开。
+- 视频号当前跳过，因为没有可用网页端内容入口。
+
 ## V0.2.0 的核心设计
 
 ### 本地优先
