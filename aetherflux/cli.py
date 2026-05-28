@@ -9,6 +9,9 @@ from pathlib import Path
 
 from .deepseek import DeepSeekAdvisorError
 from .live_collectors import BrowserConnectionError, collect_live_platform
+from .live_rotation import DEFAULT_CONFIG as DEFAULT_LIVE_CONFIG
+from .live_rotation import run_rotation_collection
+from .opencli_collectors import run_opencli_rotation
 from .pipeline import run_ingest, run_review
 from .server import run_server
 from .storage import IntelligenceStore
@@ -81,6 +84,36 @@ def main() -> None:
     live.add_argument("--cdp-url", default="http://127.0.0.1:9222")
     live.add_argument("--output", default=str(DEFAULT_LIVE_OUTPUT))
 
+    live_rotate = subcommands.add_parser(
+        "live-rotate",
+        help="Run adaptive slow rotating collection across logged-in live platforms",
+        description=(
+            "Run adaptive slow collection across platforms one item at a time. "
+            "Default config is config/live_collect.json. Use --dry-run to print the rotation plan."
+        ),
+    )
+    live_rotate.add_argument("--config", default=str(DEFAULT_LIVE_CONFIG))
+    live_rotate.add_argument("--cdp-url", default="http://127.0.0.1:9222")
+    live_rotate.add_argument("--output-dir", default="artifacts/live")
+    live_rotate.add_argument("--log-dir", default="logs/live")
+    live_rotate.add_argument("--dry-run", action="store_true")
+    live_rotate.add_argument("--no-sleep", action="store_true", help="Disable real waits; intended for tests and diagnostics")
+
+    opencli_rotate = subcommands.add_parser(
+        "opencli-rotate",
+        help="Run OpenCLI Browser Bridge rotating collection across logged-in platforms",
+        description=(
+            "Run OpenCLI Browser Bridge collection across platforms one item at a time. "
+            "Default config is config/live_collect.json. Use --dry-run to print the rotation plan."
+        ),
+    )
+    opencli_rotate.add_argument("--config", default=str(DEFAULT_LIVE_CONFIG))
+    opencli_rotate.add_argument("--output-dir", default="artifacts/opencli/live")
+    opencli_rotate.add_argument("--log-dir", default="logs/opencli/live")
+    opencli_rotate.add_argument("--stage", choices=["titles", "screen", "videos", "all"], default="all")
+    opencli_rotate.add_argument("--dry-run", action="store_true")
+    opencli_rotate.add_argument("--no-sleep", action="store_true", help="Disable real waits; intended for tests and diagnostics")
+
     args = parser.parse_args()
 
     if args.command == "ingest":
@@ -121,6 +154,28 @@ def main() -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps({"ok": True, "platform": args.platform, "stored": len(items), "output": str(output_path)}, ensure_ascii=False, indent=2))
+    elif args.command == "live-rotate":
+        result = run_rotation_collection(
+            config_path=args.config,
+            cdp_url=args.cdp_url,
+            output_dir=args.output_dir,
+            log_dir=args.log_dir,
+            dry_run=args.dry_run,
+            sleep_enabled=not args.no_sleep,
+            stage=args.stage,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "opencli-rotate":
+        result = run_opencli_rotation(
+            config_path=args.config,
+            output_dir=args.output_dir,
+            log_dir=args.log_dir,
+            dry_run=args.dry_run,
+            sleep_enabled=not args.no_sleep,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result.get("ok", False):
+            sys.exit(2)
 
 
 def _add_xhs_common_args(parser: argparse.ArgumentParser) -> None:

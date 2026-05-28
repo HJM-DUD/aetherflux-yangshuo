@@ -26,6 +26,8 @@
 
 阳朔情报中心作为“以太通量”主项目内的子项目实施，由 Codex 作为每日情报控制 agent。V0.2.0 开始，第一部分“情报收集站”采用本地优先路线：Mac 可本机运行；如 Mac 压力过大，可迁移到 PC worker 24 小时采集，Mac 读取每日资料包进入第二部分。
 
+V0.2.3 开始，真实采集优先走 OpenCLI Browser Bridge：小红书/抖音先建立最近 24 小时标题池，再由 Hermes 按机会/风险筛选，最后只对筛中的视频做本地 ASR 转写。抽帧不是重点，完整语音转文字才是后续“超级智脑”判断视频内容的第一依据。
+
 系统现在按项目内模块分层：
 
 1. **Collector Layer**
@@ -205,7 +207,7 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 - `data/aetherflux.db` 是本地运行数据库，已被 `.gitignore` 忽略。
 - `artifacts/` 是本地截图/验证产物，已被 `.gitignore` 忽略。
 - 当前网页/API 使用 Python 标准库 HTTP server，适合 MVP 和内网验证；后续可迁移 FastAPI。
-- 真实抖音、视频号视频采集器还未完整实现；V0.2.0 已先落地硬去重/同题聚类、视频关键帧计划、评论抽样、官方信源复核和每日资料包元数据。
+- 视频号视频采集器还未完整实现；V0.2.3 已先把小红书/抖音推进到 OpenCLI 登录态标题池、最近 24 小时过滤、Hermes 初筛和本地 ASR 深处理框架。
 
 ## Recommended Next Steps
 
@@ -219,15 +221,19 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 
 本项目使用 [Semantic Versioning](https://semver.org/lang/zh-CN/)，格式为 `V主版本.次版本.修订号`（如 `V0.1.0`）。
 
+从 V0.2.3 开始，每个正式版本都必须同步 GitHub 仓库并发布版本号；不能再只写本地更新日志。
+
 ### 每次版本更新必须执行
 
 1. **更新 `CHANGELOG.md`**：在文件顶部按格式新增版本条目，记录新增、变更、修复、移除等内容。
-2. **Git 标签**：在对应 commit 上打 annotated tag，格式 `v0.1.0`（小写 v），并推送标签到 GitHub。
+2. **提交并推送 GitHub**：验证通过后提交到当前版本分支，并推送 `main` 到 `origin`。
+3. **Git 标签**：在对应 commit 上打 annotated tag，格式 `v0.1.0`（小写 v），并推送标签到 GitHub。
    ```bash
+   git push origin main
    git tag -a v0.1.0 -m "V0.1.0 初始版本"
    git push origin v0.1.0
    ```
-3. **提交推送**：将 `CHANGELOG.md` 的更新和标签一起提交并推送到 GitHub。
+4. **GitHub Release**：如果 `gh` 已安装并已登录，创建对应 Release；如果未登录，必须在最终汇报中说明 tag 已推送但 Release 需要补发。
 
 ### 文档语言规范
 

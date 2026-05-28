@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Protocol
 from urllib.parse import quote
 
 from .collector_model import plan_keyframe_offsets, select_comment_samples
+from .quality import classify_quality
 
 
 class BrowserConnectionError(RuntimeError):
@@ -111,11 +112,18 @@ class LivePlatformCollector:
     def __init__(self, session: BrowserSession) -> None:
         self.session = session
 
-    def search(self, query: str, cluster_id: str = "manual", max_items: int = 30, detail_limit: int = 5) -> List[Dict[str, Any]]:
+    def search(
+        self,
+        query: str,
+        cluster_id: str = "manual",
+        max_items: int = 30,
+        detail_limit: int = 5,
+        skip_items: int = 0,
+    ) -> List[Dict[str, Any]]:
         self.session.goto(self.search_url(query))
-        cards = self.session.extract_cards(self.platform, max_items)
+        cards = self.session.extract_cards(self.platform, max_items + skip_items)
         items = []
-        for index, card in enumerate(cards):
+        for index, card in enumerate(cards[skip_items:]):
             if not (card.get("url") or card.get("title") or card.get("body")):
                 continue
             enriched = dict(card)
@@ -146,13 +154,20 @@ def collect_live_platform(
     max_items: int = 30,
     cluster_id: str = "manual",
     detail_limit: int = 5,
+    skip_items: int = 0,
     session: Optional[BrowserSession] = None,
 ) -> List[Dict[str, Any]]:
     owned_session = session is None
     browser_session = session or PlaywrightCDPSession(cdp_url)
     try:
         collector = _collector_for(platform, browser_session)
-        return collector.search(query=query, cluster_id=cluster_id, max_items=max_items, detail_limit=detail_limit)
+        return collector.search(
+            query=query,
+            cluster_id=cluster_id,
+            max_items=max_items,
+            detail_limit=detail_limit,
+            skip_items=skip_items,
+        )
     finally:
         if owned_session:
             browser_session.close()
@@ -161,7 +176,7 @@ def collect_live_platform(
 def normalize_live_item(card: Mapping[str, Any], platform: str, query: str, cluster_id: str) -> Dict[str, Any]:
     comments = select_comment_samples(card.get("comments_sample", []), keywords=["排队", "宰客", "投诉", "价格", "避雷", "推荐"])
     duration = _to_int(card.get("duration_seconds"))
-    return {
+    item = {
         "title": _clean(card.get("title")) or _clean(card.get("body"))[:60] or "未命名视频情报",
         "body": _clean(card.get("body")),
         "source": f"{platform} live browser",
@@ -186,6 +201,8 @@ def normalize_live_item(card: Mapping[str, Any], platform: str, query: str, clus
         "cluster_id": cluster_id,
         "capture_method": "chrome_cdp_login_state",
     }
+    item.update(classify_quality(item))
+    return item
 
 
 def _collector_for(platform: str, session: BrowserSession) -> LivePlatformCollector:

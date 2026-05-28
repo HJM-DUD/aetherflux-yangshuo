@@ -41,6 +41,33 @@ class CLIHelpTests(unittest.TestCase):
         self.assertIn("douyin", output)
         self.assertNotIn("wechat_channels", output)
 
+    def test_live_rotate_help_exposes_slow_adaptive_collection(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "aetherflux.cli", "live-rotate", "--help"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        output = " ".join(result.stdout.split())
+        self.assertIn("adaptive slow", output)
+        self.assertIn("config/live_collect.json", output)
+        self.assertIn("--dry-run", output)
+
+    def test_opencli_rotate_help_exposes_browser_bridge_collection(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "aetherflux.cli", "opencli-rotate", "--help"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        output = " ".join(result.stdout.split())
+        self.assertIn("OpenCLI Browser Bridge", output)
+        self.assertIn("config/live_collect.json", output)
+        self.assertIn("--dry-run", output)
+        self.assertIn("--stage", output)
+
 
 if __name__ == "__main__":
     unittest.main()

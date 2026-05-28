@@ -45,6 +45,7 @@ class LiveCollectorTests(unittest.TestCase):
         self.assertEqual(items[0]["comments"][0]["text"], "价格有点贵")
         self.assertEqual(items[0]["media"]["planned_keyframes"], [0, 15, 30, 32, 45, 60, 64])
         self.assertEqual(items[0]["media"]["cover_url"], "https://sns-img.example/cover.jpg")
+        self.assertEqual(items[0]["quality_status"], "accepted")
 
     def test_douyin_live_collector_builds_search_url_and_normalizes_video_cards(self):
         session = FakeBrowserSession(
@@ -72,6 +73,37 @@ class LiveCollectorTests(unittest.TestCase):
         self.assertEqual(items[0]["engagement"]["shares"], 7)
         self.assertEqual(items[0]["media"]["duration_seconds"], 73)
         self.assertEqual(items[0]["comments"][0]["id"], "hot")
+
+    def test_live_collector_can_skip_seen_search_results(self):
+        session = FakeBrowserSession(
+            cards=[
+                {"title": "第一条", "body": "第一条内容足够长", "url": "https://www.xiaohongshu.com/explore/one"},
+                {"title": "第二条", "body": "第二条内容足够长", "url": "https://www.xiaohongshu.com/explore/two"},
+            ]
+        )
+
+        collector = XiaohongshuLiveCollector(session)
+        items = collector.search("阳朔 旅游", "tourism-live", max_items=1, detail_limit=0, skip_items=1)
+
+        self.assertEqual(items[0]["title"], "第二条")
+
+    def test_live_collector_marks_security_limit_pages_as_rejected(self):
+        session = FakeBrowserSession(
+            cards=[
+                {
+                    "title": "用户服务协议",
+                    "body": "安全限制 访问链接异常 300017 我要反馈 返回首页",
+                    "url": "https://www.douyin.com/agreements/",
+                    "cover_url": "data:image/png;base64,abc",
+                }
+            ]
+        )
+
+        collector = DouyinLiveCollector(session)
+        items = collector.search("阳朔 旅游", "tourism-live", max_items=1, detail_limit=0)
+
+        self.assertEqual(items[0]["quality_status"], "rejected")
+        self.assertIn("blocked_or_noise_page", items[0]["reject_reason"])
 
     def test_collect_live_platform_reports_actionable_error_when_cdp_is_missing(self):
         with self.assertRaises(BrowserConnectionError) as context:

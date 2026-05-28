@@ -2,12 +2,13 @@
 
 "AetherFlux" sub-project: Yangshuo Tourism Intelligence Decision System. For internal content planning, opportunity assessment, risk identification, cross-verification, GEO likelihood evaluation, and as a data backbone for downstream operations agents.
 
-V0.2.0 upgrades the project into a local-first video intelligence collector. It focuses on Xiaohongshu, Douyin, and WeChat Channels video posts, comments, repeated-topic signals, and auxiliary official-source monitoring. Raw intelligence, screenshots, video frames, audio, full comments, and full transcripts stay local or on a future NAS. Supabase Cloud is used only for login and lightweight daily log indexes.
+V0.2.3 upgrades the project into an ASR-first video intelligence collector. It builds a recent-24-hour title pool for Xiaohongshu and Douyin, lets Hermes screen opportunity/risk candidates, and then runs local video/audio processing for full-video speech transcription. Raw intelligence, videos, audio, full comments, and full transcripts stay local or on a future NAS. Supabase Cloud is used only for login and lightweight daily log indexes.
 
 ## Quick Start
 
 ```bash
 python3 -m unittest discover -s tests
+python3 -m compileall aetherflux
 python3 -m aetherflux.cli ingest
 python3 -m aetherflux.cli review
 python3 -m aetherflux.cli serve --host 127.0.0.1 --port 8788
@@ -30,13 +31,17 @@ python3 -m aetherflux.cli xhs backfill --days 7 --source data/xhs_source_items.j
 python3 -m aetherflux.cli ingest --seed artifacts/xhs_raw_items.json
 ```
 
-## V0.2.0 Local Collector
+## V0.2.3 ASR-First Collector
 
-V0.2.0 is local-first:
+V0.2.3 is local-first and ASR-first:
 
 - `hard_dedupe_key` only collapses exact duplicates, such as the same URL, platform item ID, or media fingerprint.
 - `topic_cluster_key` groups different users discussing the same event without deleting the original items.
-- Video processing uses local `ffmpeg` for keyframes and audio extraction; speech-to-text should prefer local ASR.
+- Query planning uses manual keywords plus rule-based place/segment/risk/opportunity combinations, with optional Hermes exploration terms.
+- OpenCLI Browser Bridge performs logged-in browser search, recent-time filtering attempts, scrolling, and title-pool extraction.
+- Hermes screens the lightweight title pool and selects videos for deeper ASR processing.
+- Video processing prioritizes full-video ASR transcripts over frame extraction. Keyframes are optional evidence only.
+- Local `ffmpeg` extracts audio; ASR uses local backends such as `mlx-whisper`, `faster-whisper`, or `whisper` when installed.
 - Comment collection keeps hot comments, recent comments, author replies, and comments matching risk/opportunity keywords.
 - Official sources are configured on a separate admin page. When mission place, industry, or segment changes, official sources must be reviewed again and cannot silently carry over from a previous region.
 - Each day produces a `daily_bundle_YYYY-MM-DD` handoff package for the downstream Super Brain stage.
@@ -63,6 +68,23 @@ AETHERFLUX_WEBHOOK_URL="https://your-webhook.example.com" scripts/daily_review.s
 ```
 
 The Webhook payload is generic JSON, suitable for Feishu, WeCom, n8n, Dify, or custom bots.
+
+Run V0.2.3 OpenCLI collection:
+
+```bash
+opencli doctor
+AETHERFLUX_DRY_RUN=1 scripts/hermes_collect_opencli.sh
+scripts/hermes_collect_opencli.sh
+```
+
+Run one stage only:
+
+```bash
+python3 -m aetherflux.cli opencli-rotate --stage titles
+python3 -m aetherflux.cli opencli-rotate --stage screen
+python3 -m aetherflux.cli opencli-rotate --stage videos
+python3 -m aetherflux.cli opencli-rotate --stage all
+```
 
 Enable the DeepSeek advisor layer via local environment variables (never commit keys to the repo):
 
@@ -96,7 +118,8 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 ## Current Boundary
 
 - `ingest` can still use `data/seed_items.json` as sample input; Xiaohongshu collection is now available via `xhs backfill` / `xhs daily`, driven by a logged-in browser or opencli, with output saved as JSON feed.
-- Douyin and WeChat Channels video collectors will be expanded behind the same raw item schema.
+- WeChat Channels remains skipped until a reliable non-mobile collection path exists.
+- From V0.2.3 onward, every formal version must be committed to GitHub, tagged, and released when GitHub CLI authentication is available.
 - PC worker mode is planned: if long-running collection is too heavy for the Mac, Part 1 can move to a PC that generates daily bundles for the Mac-side Super Brain stage.
 - DeepSeek V4 is a pluggable advisor layer; on missing key or API failure the system falls back to rules-based review to keep the daily pipeline running.
 - Bilingual (Chinese/English) output is generated only before human review and final presentation; intermediate processing avoids bilingual expansion to save tokens.

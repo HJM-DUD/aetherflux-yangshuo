@@ -8,6 +8,71 @@
 
 ## [Unreleased]
 
+## [V0.2.3] - 2026-05-29
+
+### 新增 / Added
+
+- 新增 ASR 优先的视频情报深处理框架：本地提取音频、选择本地 ASR 后端、输出 `transcript_full`、`transcript_segments`、`video_summary` 和 `decision_hints`。
+- 新增混合关键词规划：手动关键词、地点/景点、细分赛道、风险词、机会词和 Hermes 探索词共同生成标题池搜索词。
+- 新增最近 24 小时 freshness 解析与过滤字段：`published_at_raw`、`freshness_status`、`freshness_window_hours`、`ui_filter_applied`。
+- 新增 `opencli-rotate --stage titles|screen|videos|all`，支持标题池、初筛、视频 ASR 和完整流程分阶段运行。
+- 新增 Hermes 标题池初筛入口；Hermes 不可用或关闭时回退本地机会/风险规则筛选。
+
+### 变更 / Changed
+
+- 小红书/抖音 OpenCLI 采集从固定少量首屏结果升级为浏览器搜索、时间筛选尝试、多轮滚动和标题池抽取。
+- 默认配置调整为 V0.2.3 压力档：每个平台约 200 条标题池，约 40 条进入深处理，抽帧默认关闭，ASR 为视频处理第一优先级。
+- `scripts/hermes_collect_opencli.sh` 默认执行完整链路，并显式开启 Hermes 初筛。
+- 项目版本号更新为 `0.2.3`。
+
+### 安全 / Security
+
+- 原始视频、音频、转写全文和深处理结果继续只保存在本地或未来 NAS，不上传 Supabase Cloud。
+- 缺少 ASR 依赖或视频下载路径时明确标记失败原因，不写假成功数据。
+
+### 发布 / Release
+
+- 从 V0.2.3 起，正式版本必须同步 GitHub、推送 `main`、打 annotated tag，并尽量创建 GitHub Release。
+
+## [V0.2.2] - 2026-05-29
+
+### 新增 / Added
+
+- 新增 OpenCLI Browser Bridge 采集层，默认复用当前常用 Chrome 登录态，不再默认启动专用 CDP Chrome。
+- 新增 `python3 -m aetherflux.cli opencli-rotate`，按小红书/抖音交替轮转执行 OpenCLI 采集。
+- 新增 `scripts/hermes_collect_opencli.sh`，作为 Hermes 默认真实采集入口，并在采集前执行 `opencli doctor`。
+- 新增 OpenCLI 输出标准化，将小红书搜索、抖音话题/地点等 rows 转为 AetherFlux raw item schema。
+
+### 变更 / Changed
+
+- `scripts/hermes_collect_live.sh` 默认转向 OpenCLI 后端；旧 CDP 后端仅在 `AETHERFLUX_COLLECT_BACKEND=cdp` 时启用。
+- OpenCLI 未打通 Browser Bridge 时直接停止采集，避免产生假成功数据。
+
+### 修复 / Fixed
+
+- 修正抖音 OpenCLI 采集入口：不再调用会跳转到创作者中心的 `douyin hashtag search`，改为通过 Browser Bridge 打开 `https://www.douyin.com/jingxuan`，再输入当前采集关键词搜索并抽取搜索结果页可见视频信号。
+- 避免旧 CDP 专用 Chrome 登录态与平台风控冲突导致的安全限制页、协议页和无效正文污染候选池。
+
+## [V0.2.1] - 2026-05-28
+
+### 新增 / Added
+
+- 新增 `config/live_collect.json`，把小红书/抖音平台、关键词、每日目标、单篇等待时间和单任务采集上限放到本地配置中。
+- 新增自适应轮转慢采集：按“小红书 1 篇 → 抖音 1 篇 → 随机等待”的方式交替采集，默认每篇后等待 90-240 秒。
+- 新增 `python3 -m aetherflux.cli live-rotate` 命令，支持 `--dry-run` 预览平台轮转计划。
+- 新增采集质量闸门，标记协议页、安全限制页、备案页、空正文、base64 封面等低质量结果。
+
+### 变更 / Changed
+
+- `scripts/hermes_collect_live.sh` 改为调用轮转慢采集命令，不再按平台批量快速采集。
+- Hermes 的默认角色调整为采集监督：读取采集 summary 和平台健康状态，判断继续、暂停平台或上报人工。
+- 当前版本只写入本地更新日志，不同步 GitHub，不打 tag。
+
+### 修复 / Fixed
+
+- 修复旧采集脚本连续快速打开详情页容易触发平台限制、并把安全限制页/协议页当作有效情报的问题。
+- 修复旧详情页抽取过粗导致页面页脚、备案、导航文本污染情报正文的问题，先通过质量闸门阻断进入正式候选。
+
 ### 新增 / Added
 
 - 新增小红书/抖音登录态 Chrome CDP 采集 adapter 初版：支持搜索页可见卡片、前 N 条详情页轻量抽取、评论样本、视频关键帧计划字段。

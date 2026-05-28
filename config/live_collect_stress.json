@@ -1,0 +1,22 @@
+{
+  "platforms": ["xiaohongshu", "douyin"],
+  "manual_queries": ["阳朔 旅游", "阳朔 竹筏", "阳朔 西街", "阳朔 民宿", "阳朔 旅拍"],
+  "query_strategy": "hybrid",
+  "target_per_platform": 200,
+  "title_target_per_platform": 200,
+  "deep_process_limit_per_platform": 40,
+  "freshness_window_hours": 24,
+  "scroll_rounds_per_query": 10,
+  "scroll_stop_after_no_new_rounds": 2,
+  "wait_min_seconds": 8,
+  "wait_max_seconds": 20,
+  "max_items_per_task": 25,
+  "detail_limit_per_task": 1,
+  "video_processing_priority": "asr",
+  "enable_keyframes": false,
+  "asr_backend": "auto",
+  "asr_model": "small",
+  "asr_language": "zh",
+  "cooldown_minutes_on_limit": 60,
+  "quality_goal": "v023_asr_pressure_test"
+}

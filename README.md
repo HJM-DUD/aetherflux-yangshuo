@@ -4,22 +4,19 @@
 
 ## 当前版本状态
 
-当前版本是 **V0.2.0：本地优先的视频情报收集站底座**。
+当前版本是 **V0.2.3：ASR 优先的视频情报采集版本**。
 
-这一版重点不是“已经完成真实全平台爬取”，而是把后续真实采集需要的底层结构先搭好：
+这一版重点是把小红书/抖音采集升级成“最近 24 小时标题池 → Hermes 初筛 → 本地 ASR 深处理”的流程：
 
-- 本地 SQLite 数据结构扩展
-- `hard_dedupe_key` 完全重复去重
-- `topic_cluster_key` 同题讨论聚类
-- 评论抽样规则
-- 视频关键帧规划
-- 官方信源随 mission 变化需要复核
-- 本地证据保留时长
-- 每日资料包元数据
-- Supabase 轻量日志同步记录
-- 默认端口从 `8765` 改为 `8788`
+- 混合关键词池：手动关键词 + 地点/景点/细分/风险/机会词 + Hermes 探索词
+- 最近 24 小时信息优先：平台 UI 筛选尝试 + 本地发布时间二次过滤
+- 多轮滚动标题池采集，减少每次只抓首屏重复内容的问题
+- Hermes 只读轻量标题池，按机会/风险筛选需要深处理的视频
+- 深处理以全视频 ASR 转写为核心，抽帧默认不是重点
+- 原始视频、音频、转写和证据仍只保存在本地或未来 NAS
+- 从 V0.2.3 起，每个正式版本都必须同步 GitHub、打 tag，并尽量创建 GitHub Release
 
-**还没有完成真实小红书、抖音、视频号登录态视频采集 adapter。** 下一阶段要重点做的就是这件事。
+视频号仍因没有稳定网页端内容入口暂时跳过。
 
 ## 运行方式
 
@@ -66,36 +63,43 @@ python3 -m aetherflux.cli ingest --seed artifacts/xhs_raw_items.json
 
 注意：这里的 `xhs backfill` **不是直接登录小红书并自动爬取真实平台**。它目前读取的是已经落盘的 JSON 数据，用来测试后续真实采集 adapter 的入库流程。
 
-## 登录态采集适配器
+## OpenCLI 登录态采集
 
-V0.2.0 之后已经新增小红书和抖音的登录态浏览器 adapter。它通过 Chrome DevTools Protocol 连接一个你主动打开的 Chrome 窗口，不读取 cookie 文件，不绕验证码，不支持视频号网页端。
+V0.2.3 默认使用 OpenCLI Browser Bridge 复用当前 Chrome 登录态，不读取 cookie 文件，不绕验证码，不支持视频号网页端。
 
-先打开专用 Chrome 采集窗口：
-
-```bash
-scripts/open_chrome_cdp.sh
-```
-
-然后在这个新开的 Chrome 窗口里手动登录小红书和抖音。
-
-采集小红书搜索结果：
+先确认 OpenCLI 已打通：
 
 ```bash
-python3 -m aetherflux.cli live xiaohongshu --query "阳朔 竹筏" --max-items 20 --detail-limit 5 --output artifacts/live_xhs_yangshuo.json
+opencli doctor
 ```
 
-采集抖音搜索结果：
+预览 V0.2.3 标题池采集计划：
 
 ```bash
-python3 -m aetherflux.cli live douyin --query "阳朔 西街" --max-items 20 --detail-limit 5 --output artifacts/live_douyin_yangshuo.json
+AETHERFLUX_DRY_RUN=1 scripts/hermes_collect_opencli.sh
 ```
 
-说明：
+执行完整流程：
 
-- `--max-items` 控制搜索结果列表采集数量。
-- `--detail-limit` 控制打开详情页的前 N 条，默认 5，建议不要一次开太多。
-- 如果提示无法连接 Chrome remote debugging，说明 `9222` 调试端口没有打开。
-- 视频号当前跳过，因为没有可用网页端内容入口。
+```bash
+scripts/hermes_collect_opencli.sh
+```
+
+按阶段执行：
+
+```bash
+python3 -m aetherflux.cli opencli-rotate --stage titles
+python3 -m aetherflux.cli opencli-rotate --stage screen
+python3 -m aetherflux.cli opencli-rotate --stage videos
+python3 -m aetherflux.cli opencli-rotate --stage all
+```
+
+阶段说明：
+
+- `titles`：只采集最近 24 小时标题池。
+- `screen`：标题池 + Hermes/本地规则初筛。
+- `videos`：标题池 + 初筛 + 视频 ASR 深处理。
+- `all`：默认完整流程。
 
 ## V0.2.0 的核心设计
 
@@ -127,26 +131,25 @@ V0.2.0 明确区分两件事：
 
 不同用户都在说“阳朔某景区排队”“某路线爆火”“某项目避雷”，这不是垃圾重复，而是重要情报信号。
 
-### 视频是重点
+### ASR 是视频理解重点
 
-后续真实采集 adapter 要围绕视频设计，而不是只抓网页文字。
+V0.2.3 不把抽帧作为主要能力，核心是用完整语音转文字低成本理解视频在说什么。
 
-每条视频尽量采集：
+深处理字段包括：
 
 - 标题
-- 文案
-- 标签
 - 作者
 - 发布时间
 - 点赞/评论/收藏/转发
-- 封面
-- 关键帧截图
-- 平台字幕
-- 音频转文字
-- 评论
 - 来源链接
+- `asr_status`
+- `asr_backend`
+- `transcript_full`
+- `transcript_segments`
+- `video_summary`
+- `decision_hints`
 
-本机已有 `ffmpeg`，可用于关键帧和音频提取。语音转文字优先使用本地 ASR，不上传原始音视频。
+本机已有 `ffmpeg` 时可提取音频。ASR 后端按本地依赖自动选择：Apple Silicon 优先 `mlx-whisper`，其他环境优先 `faster-whisper`，缺依赖时会明确标记失败原因，不写假成功数据。
 
 ### 评论是重点
 
