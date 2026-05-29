@@ -39,6 +39,7 @@ class FakeAdvisorClient:
                         "level": "medium",
                         "reasons": ["单一圈层来源", "存在路线推荐商业化可能"],
                     },
+                    "tags": ["遇龙河", "骑行", "票务"],
                 }
             ]
         }
@@ -67,6 +68,7 @@ class AdvisorTests(unittest.TestCase):
         self.assertEqual(enriched["cross_check"]["status"], "unverified")
         self.assertIn("probability", enriched["geo_risk"])
         self.assertEqual(enriched["advisor_notes"]["status"], "disabled")
+        self.assertIn("外国游客信号", enriched["tags"])
 
     def test_fallback_explains_deepseek_timeout(self):
         candidate = {
@@ -98,6 +100,7 @@ class AdvisorTests(unittest.TestCase):
         self.assertEqual(enriched["cross_check"]["status"], "needs_more_sources")
         self.assertEqual(enriched["geo_risk"]["level"], "medium")
         self.assertEqual(enriched["advisor_notes"]["confidence"], 0.78)
+        self.assertEqual(enriched["tags"], ["遇龙河", "骑行", "票务"])
 
     def test_advisor_service_normalizes_geo_probability_from_level_text(self):
         class TextProbabilityClient:

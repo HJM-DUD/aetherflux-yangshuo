@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -492,10 +493,16 @@ def _load_latest_artifact(artifact_dir: Path, *globs: str) -> Dict[str, Any]:
     try:
         data = json.loads(latest.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {"items": [], "empty_reason": "read_error", "file": str(latest)}
+        return {
+            "items": [],
+            "empty_reason": "read_error",
+            "file": str(latest),
+            "collected_at": datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc).isoformat(),
+        }
+    collected_at = datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc).isoformat()
     if isinstance(data, list):
-        return {"items": data, "file": str(latest)}
-    return {"items": [data], "file": str(latest)}
+        return {"items": data, "file": str(latest), "collected_at": collected_at}
+    return {"items": [data], "file": str(latest), "collected_at": collected_at}
 
 
 def _build_job(payload: CollectionJobRequest, root: Path) -> Dict[str, Any]:
@@ -600,8 +607,25 @@ def _safe_payload(value: Any) -> Any:
     if isinstance(value, list):
         return [_safe_payload(item) for item in value]
     if isinstance(value, str) and any(secret in value.lower() for secret in ("api_key", "cookie", "token", "password", "secret")):
-        return "redacted"
+        return _safe_string(value)
     return value
+
+
+def _safe_string(value: str) -> str:
+    parsed = urlsplit(value)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        kept_query = [
+            (key, item)
+            for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+            if not _looks_sensitive(key) and not _looks_sensitive(item)
+        ]
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(kept_query), parsed.fragment))
+    return "redacted"
+
+
+def _looks_sensitive(value: str) -> bool:
+    lowered = value.lower()
+    return any(secret in lowered for secret in ("api_key", "cookie", "token", "password", "secret"))
 
 
 def _utc_now() -> str:

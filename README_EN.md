@@ -2,6 +2,18 @@
 
 "AetherFlux" sub-project: Yangshuo Tourism Intelligence Decision System. For internal content planning, opportunity assessment, risk identification, cross-verification, GEO likelihood evaluation, and as a data backbone for downstream operations agents.
 
+## Product Frame
+
+AetherFlux is planned as GuGU's internal agent application, not a public SaaS product. It will grow in five parts:
+
+1. **Intelligence Collection Station**: the V0.2.x focus. Monitors specified accounts, searches public platforms, processes comments and video ASR, supports manual high-weight input, and emits daily bundles.
+2. **Super Brain**: downstream analysis with Codex, Hermes, Antigravity, DeepSeek, cross-verification, opportunity/risk judgment, and weighting.
+3. **Online Operations Center**: planning and operating GuGU's internet accounts, acquisition channels, and maintenance workflows.
+4. **Content Generation Factory**: producing posts, scripts, images, videos, and notes based on intelligence and operations decisions.
+5. **Offline Business Control**: managing customers, itineraries, costs, resources, and offline execution.
+
+V0.2.x should make Part 1 reliable and expose clean handoff data/API surfaces for Part 2. Parts 2-5 should remain planned interfaces until real workflows are implemented.
+
 V0.2.4 rebuilds the old V0.1 static dashboard as a React/Vite admin frontend plus a FastAPI backend. The first screen is a collection control console for title pools, screening, ASR processing, task logs, trash recovery, diagnostics, and release checks. Raw intelligence, videos, audio, full comments, and full transcripts stay local or on a future NAS. Supabase Cloud is used only for login and lightweight daily log indexes.
 
 ## Quick Start
@@ -27,7 +39,7 @@ Port `8765` is reserved for Triagent. AetherFlux Web defaults to `8788`; the loc
 
 ## Daily Review
 
-Xiaohongshu (RED) initial backfill of the last 7 days, outputting raw item JSON for subsequent `ingest`:
+Xiaohongshu (RED) `xhs` commands process JSON feed snapshots captured separately by another browser driver or manual export. They are not live crawlers, and they output raw item JSON for subsequent `ingest`:
 
 ```bash
 python3 -m aetherflux.cli xhs backfill --days 7 --source data/xhs_source_items.json --output artifacts/xhs_raw_items.json
@@ -104,6 +116,9 @@ V0.2.4 uses `/api/v1/*` as the formal API namespace:
 - `GET /api/v1/dashboard/summary`
 - `GET/PUT /api/v1/collection/config`
 - `GET/POST /api/v1/collection/jobs`
+- `GET /api/v1/collection/jobs/{job_id}`
+- `GET /api/v1/collection/jobs/{job_id}/log`
+- `POST /api/v1/collection/jobs/{job_id}/cancel`
 - `GET /api/v1/intelligence/candidates`
 - `POST /api/v1/intelligence/decisions`
 - `GET /api/v1/intelligence/selected`
@@ -119,6 +134,11 @@ V0.2.4 uses `/api/v1/*` as the formal API namespace:
 - `POST /api/v1/trash/restore`
 - `POST /api/v1/trash/mark-cleanable`
 - `GET /api/v1/system/status`
+- `POST /api/v1/system/deepseek-smoke-test`
+- `GET /api/v1/system/opencli-doctor`
+- `GET /api/v1/system/diagnose`
+- `GET /api/v1/title-pool`
+- `GET /api/v1/video-processing`
 - `GET /api/v1/agent/apis`
 - `GET /api/v1/release/status`
 
@@ -126,7 +146,7 @@ The old `/api/*` routes remain only as legacy dashboard references, not the main
 
 ## Current Boundary
 
-- `ingest` can still use `data/seed_items.json` as sample input; Xiaohongshu collection is now available via `xhs backfill` / `xhs daily`, driven by a logged-in browser or opencli, with output saved as JSON feed.
+- `ingest` can still use `data/seed_items.json` as sample input; Xiaohongshu JSON feed processing is available via `xhs backfill` / `xhs daily`, while live logged-in browser collection is handled separately by `live` and `opencli-rotate`.
 - WeChat Channels remains skipped until a reliable non-mobile collection path exists.
 - From V0.2.3 onward, every formal version must be committed to GitHub, tagged, and released when GitHub CLI authentication is available.
 - PC worker mode is planned: if long-running collection is too heavy for the Mac, Part 1 can move to a PC that generates daily bundles for the Mac-side Super Brain stage.

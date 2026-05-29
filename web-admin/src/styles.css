@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+:root[data-theme="light"] {
   color-scheme: light;
   --background: 204 33% 97%;
   --foreground: 218 28% 13%;
@@ -11,7 +12,7 @@
   --muted: 205 31% 92%;
   --muted-foreground: 217 12% 42%;
   --border: 205 20% 84%;
-  --primary: 186 76% 31%;
+  --primary: 263 68% 58%;
   --primary-foreground: 0 0% 100%;
   --warning: 38 92% 50%;
   --danger: 350 78% 48%;
@@ -19,7 +20,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     color-scheme: dark;
     --background: 220 22% 9%;
     --foreground: 210 18% 92%;
@@ -28,12 +29,28 @@
     --muted: 220 16% 18%;
     --muted-foreground: 214 12% 68%;
     --border: 218 14% 25%;
-    --primary: 184 72% 42%;
-    --primary-foreground: 218 28% 9%;
+    --primary: 263 68% 62%;
+    --primary-foreground: 0 0% 100%;
     --warning: 40 92% 56%;
     --danger: 350 78% 58%;
     --success: 154 58% 46%;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: 220 22% 9%;
+  --foreground: 210 18% 92%;
+  --card: 220 20% 13%;
+  --card-foreground: 210 18% 92%;
+  --muted: 220 16% 18%;
+  --muted-foreground: 214 12% 68%;
+  --border: 218 14% 25%;
+  --primary: 263 68% 62%;
+  --primary-foreground: 0 0% 100%;
+  --warning: 40 92% 56%;
+  --danger: 350 78% 58%;
+  --success: 154 58% 46%;
 }
 
 * {

@@ -11,11 +11,15 @@ import {
   Gauge,
   Globe2,
   ListFilter,
+  Monitor,
+  Moon,
   Play,
   Radar,
   RefreshCcw,
+  Search,
   ShieldAlert,
   SlidersHorizontal,
+  Sun,
   Trash2,
   Video,
   X
@@ -26,8 +30,9 @@ import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 
-type ApiList<T> = { items?: T[]; empty_reason?: string; file?: string };
+type ApiList<T> = { items?: T[]; empty_reason?: string; file?: string; collected_at?: string };
 type AnyRecord = Record<string, any>;
+type ThemeMode = "system" | "light" | "dark";
 
 type Summary = {
   version?: string;
@@ -114,13 +119,12 @@ const defaultConfig: Config = {
 };
 
 const nav = [
-  ["采集作战台", Activity],
+  ["采集操作台", Activity],
   ["采集配置", SlidersHorizontal],
   ["标题池", ListFilter],
   ["语音转文字深处理", Video],
   ["候选审阅", ClipboardCheck],
   ["交叉验证", ShieldAlert],
-  ["生成式搜索风险", Radar],
   ["官方信源", Globe2],
   ["每日资料包", Boxes],
   ["证据保留", Database],
@@ -142,6 +146,25 @@ const platformLabels: Record<string, string> = {
   xiaohongshu: "小红书",
   douyin: "抖音",
   wechat_channels: "视频号"
+};
+
+const jobPageSize = 8;
+const themeStorageKey = "aetherflux-admin-theme";
+
+const statusLabels: Record<string, string> = {
+  queued: "等待中",
+  running: "运行中",
+  cancelling: "正在停止",
+  cancelled: "已停止",
+  succeeded: "已完成",
+  completed: "已完成",
+  failed: "失败",
+  pending: "待确认",
+  rejected: "已驳回",
+  approved: "已确认",
+  deleted: "已软删除",
+  ok: "正常",
+  unknown: "未知"
 };
 
 async function getJson<T>(url: string, fallback: T): Promise<T> {
@@ -167,8 +190,58 @@ function getSummary(item: AnyRecord): string {
   return item.summary || item.display?.summary_zh || item.text || item.description || "暂无摘要";
 }
 
+function getTitleSearchText(item: AnyRecord): string {
+  return [
+    getTitle(item),
+    getSummary(item),
+    item.platform,
+    item.query,
+    item.keyword,
+    item.status,
+    item.quality_status,
+    item.id,
+    item.url,
+    item.source_url,
+    item.author,
+    item.account,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+}
+
+function getInitialThemeMode(): ThemeMode {
+  if (typeof window === "undefined") return "system";
+  const saved = window.localStorage.getItem(themeStorageKey);
+  return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+}
+
+function formatPlatform(platform?: string): string {
+  const value = platform || "-";
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => platformLabels[item] || item)
+    .join("、") || "-";
+}
+
 export default function App() {
-  const [activePage, setActivePage] = useState("采集作战台");
+  const [activePage, setActivePage] = useState("采集操作台");
   const [summary, setSummary] = useState<Summary>(defaultSummary);
   const [config, setConfig] = useState<Config>(defaultConfig);
   const [editConfig, setEditConfig] = useState<Config>(defaultConfig);
@@ -176,6 +249,7 @@ export default function App() {
   const [jobLog, setJobLog] = useState("");
   const [titles, setTitles] = useState<AnyRecord[]>([]);
   const [titleMeta, setTitleMeta] = useState<ApiList<AnyRecord>>({});
+  const [titleSearch, setTitleSearch] = useState("");
   const [videos, setVideos] = useState<AnyRecord[]>([]);
   const [videoMeta, setVideoMeta] = useState<ApiList<AnyRecord>>({});
   const [candidates, setCandidates] = useState<AnyRecord[]>([]);
@@ -183,14 +257,17 @@ export default function App() {
   const [dailyBundles, setDailyBundles] = useState<AnyRecord[]>([]);
   const [cloudLogs, setCloudLogs] = useState<AnyRecord[]>([]);
   const [trash, setTrash] = useState<AnyRecord[]>([]);
+  const [locallyDeletedCandidateIds, setLocallyDeletedCandidateIds] = useState<string[]>([]);
   const [selectedTrashIds, setSelectedTrashIds] = useState<string[]>([]);
   const [agentApis, setAgentApis] = useState<AnyRecord[]>([]);
   const [releaseStatus, setReleaseStatus] = useState<AnyRecord>({});
   const [retention, setRetention] = useState({ evidence_hours: 48, cloud_log_months: 3, notice: "" });
   const [diagnosis, setDiagnosis] = useState<AnyRecord | null>(null);
-  const [dryRun, setDryRun] = useState(true);
-  const [selectedPlatform, setSelectedPlatform] = useState("xiaohongshu");
   const [toast, setToast] = useState("");
+  const [selectedJobId, setSelectedJobId] = useState("");
+  const [jobPage, setJobPage] = useState(1);
+  const [jobsRefreshedAt, setJobsRefreshedAt] = useState("");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
   const [newTerm, setNewTerm] = useState<Record<string, string>>({});
   const [newSource, setNewSource] = useState({ label: "", url: "", mission_id: "yangshuo", recommended_by: "manual" });
   const [saving, setSaving] = useState(false);
@@ -202,17 +279,38 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const root = document.documentElement;
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      const resolved = themeMode === "system" ? (media?.matches ? "dark" : "light") : themeMode;
+      root.dataset.theme = resolved;
+      root.dataset.themeMode = themeMode;
+      root.classList.toggle("dark", resolved === "dark");
+      window.localStorage.setItem(themeStorageKey, themeMode);
+    };
+    applyTheme();
+    if (themeMode !== "system" || !media) return;
+    media.addEventListener?.("change", applyTheme);
+    return () => media.removeEventListener?.("change", applyTheme);
+  }, [themeMode]);
+
+  useEffect(() => {
     setEditConfig({ ...defaultConfig, ...config });
   }, [config]);
 
   useEffect(() => {
-    const hasRunningJob = jobs.some((job) => ["queued", "running"].includes(String(job.status)));
-    if (!hasRunningJob) return;
+    if (activePage !== "采集操作台") return;
     const timer = window.setInterval(() => {
       void fetchJobs();
-    }, 2500);
+      if (selectedJobId) void fetchJobLog(selectedJobId);
+    }, 5000);
     return () => window.clearInterval(timer);
-  }, [jobs]);
+  }, [activePage, selectedJobId]);
+
+  useEffect(() => {
+    const pageCount = Math.max(1, Math.ceil(jobs.length / jobPageSize));
+    if (jobPage > pageCount) setJobPage(pageCount);
+  }, [jobPage, jobs.length]);
 
   async function refreshAll() {
     const [
@@ -269,6 +367,7 @@ export default function App() {
   async function fetchJobs() {
     const payload = await getJson<ApiList<AnyRecord>>("/api/v1/collection/jobs", { items: [] });
     setJobs(unwrapItems(payload));
+    setJobsRefreshedAt(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
   }
 
   function showToast(message: string) {
@@ -276,32 +375,41 @@ export default function App() {
     window.setTimeout(() => setToast(""), 3500);
   }
 
-  async function startJob(stage: string) {
-    if (!dryRun) {
-      const ok = window.confirm(
-        `你将真实启动 ${platformLabels[selectedPlatform] || selectedPlatform} 的“${stageLabels[stage]}”。\n这会调用本机 OpenCLI 和平台登录态。确认继续吗？`
-      );
-      if (!ok) return;
+  async function startFullCollection() {
+    const platforms = config.platforms.filter(Boolean);
+    if (!platforms.length) {
+      showToast("配置页还没有启用平台，请先到采集配置添加平台。");
+      return;
     }
+    const ok = window.confirm(
+      `你将真实启动“完整采集流程”。\n平台：${platforms.map(formatPlatform).join("、")}\n这会调用本机 OpenCLI 和平台登录态。确认继续吗？`
+    );
+    if (!ok) return;
+
     const response = await fetch("/api/v1/collection/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ platform: selectedPlatform, stage, dry_run: dryRun })
+      body: JSON.stringify({ platform: platforms.join(","), stage: "all", dry_run: false })
     });
     if (!response.ok) {
-      showToast("任务提交失败，请到系统诊断查看 OpenCLI 和后台状态");
+      showToast("完整采集流程提交失败，请到系统诊断查看 OpenCLI 和后台状态。");
+      void fetchJobs();
       return;
     }
     const job = await response.json();
+
     setJobs((prev) => [job, ...prev.filter((item) => item.id !== job.id)]);
-    showToast(`已提交任务：${stageLabels[stage]}，任务号 ${job.id}`);
-    void fetchJobLog(job.id);
+    setJobPage(1);
+    showToast(`已提交完整采集流程：${platforms.map(formatPlatform).join("、")}`);
+    if (job.id) void fetchJobLog(job.id);
+    void fetchJobs();
   }
 
   async function fetchJobLog(jobId: string) {
     try {
       const response = await fetch(`/api/v1/collection/jobs/${jobId}/log`);
       setJobLog(response.ok ? await response.text() : "");
+      setSelectedJobId(jobId);
     } catch {
       setJobLog("");
     }
@@ -356,8 +464,13 @@ export default function App() {
       showToast("审阅操作失败");
       return;
     }
+    const payload = await response.json();
+    setCandidates((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, ...(payload.candidate || {}), human_status: status } : item
+      )
+    );
     showToast(status === "approved" ? "已确认候选情报" : "已驳回候选情报");
-    void refreshAll();
   }
 
   async function moveCandidateToTrash(id: string) {
@@ -366,7 +479,28 @@ export default function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ item_type: "candidate", ids: [id], reason: "后台人工软删除" })
     });
-    showToast(response.ok ? "已移入软删除回收站" : "移入回收站失败");
+    if (response.ok) {
+      setLocallyDeletedCandidateIds((prev) => Array.from(new Set([...prev, id])));
+      showToast("已移入软删除回收站");
+    } else {
+      showToast("移入回收站失败");
+    }
+    void refreshAll();
+  }
+
+  async function restoreCandidateFromTrash(id: string) {
+    const response = await fetch("/api/v1/trash/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [id] })
+    });
+    if (response.ok) {
+      setLocallyDeletedCandidateIds((prev) => prev.filter((item) => item !== id));
+      setTrash((prev) => prev.filter((item) => item.id !== id));
+      showToast("已撤销软删除");
+    } else {
+      showToast("撤销删除失败");
+    }
     void refreshAll();
   }
 
@@ -377,6 +511,7 @@ export default function App() {
       body: JSON.stringify({ ids: selectedTrashIds })
     });
     showToast(response.ok ? "已恢复所选条目" : "恢复失败");
+    if (response.ok) setLocallyDeletedCandidateIds((prev) => prev.filter((id) => !selectedTrashIds.includes(id)));
     setSelectedTrashIds([]);
     void refreshAll();
   }
@@ -437,10 +572,40 @@ export default function App() {
     () => candidates.filter((item) => item.cross_check || item.claim || item.support_sources || item.conflict_sources),
     [candidates]
   );
-  const geoRiskItems = useMemo(
-    () => candidates.filter((item) => item.geo_risk || item.geo_risk_score || item.geo_risk_probability),
-    [candidates]
+  const jobPageCount = Math.max(1, Math.ceil(jobs.length / jobPageSize));
+  const visibleJobs = useMemo(
+    () => jobs.slice((jobPage - 1) * jobPageSize, jobPage * jobPageSize),
+    [jobPage, jobs]
   );
+  const deletedCandidateIds = useMemo(() => {
+    const ids = new Set(locallyDeletedCandidateIds);
+    trash.forEach((item) => {
+      if (item.item_type === "candidate" || item.payload_json?.id) ids.add(String(item.id));
+    });
+    return ids;
+  }, [locallyDeletedCandidateIds, trash]);
+  const pendingCandidates = useMemo(
+    () => candidates.filter((item) => !deletedCandidateIds.has(String(item.id)) && (item.human_status || "pending") === "pending"),
+    [candidates, deletedCandidateIds]
+  );
+  const approvedCandidates = useMemo(
+    () => candidates.filter((item) => !deletedCandidateIds.has(String(item.id)) && item.human_status === "approved"),
+    [candidates, deletedCandidateIds]
+  );
+  const rejectedCandidates = useMemo(
+    () => candidates.filter((item) => !deletedCandidateIds.has(String(item.id)) && item.human_status === "rejected"),
+    [candidates, deletedCandidateIds]
+  );
+  const deletedCandidates = useMemo(
+    () => candidates.filter((item) => deletedCandidateIds.has(String(item.id))),
+    [candidates, deletedCandidateIds]
+  );
+  const candidateTagCounts = useMemo(() => buildTagCounts(candidates), [candidates]);
+  const filteredTitles = useMemo(() => {
+    const query = titleSearch.trim().toLowerCase();
+    if (!query) return titles;
+    return titles.filter((item) => getTitleSearchText(item).includes(query));
+  }, [titleSearch, titles]);
 
   return (
     <div className="min-h-dvh bg-background text-foreground lg:flex">
@@ -468,14 +633,15 @@ export default function App() {
         </nav>
       </aside>
 
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 overflow-x-clip">
         <header className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 py-3 backdrop-blur md:px-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs font-semibold text-muted-foreground">V0.2.4 后台控制台</p>
               <h1 className="text-2xl font-black tracking-normal">以太情报后台</h1>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <ThemeSwitch mode={themeMode} onChange={setThemeMode} />
               <Badge tone="success">本机免登录</Badge>
               <Badge tone="warning">自动审议，不自动发布</Badge>
               <Badge tone="info">127.0.0.1</Badge>
@@ -486,42 +652,30 @@ export default function App() {
         {toast && <div className="mx-4 mt-4 rounded-md border border-border bg-card px-4 py-3 text-sm md:mx-6">{toast}</div>}
 
         <div className="space-y-6 p-4 md:p-6">
-          {activePage === "采集作战台" && (
-            <Page title="采集作战台" icon={<Activity className="h-5 w-5" />}>
+          {activePage === "采集操作台" && (
+            <Page title="采集操作台" icon={<Activity className="h-5 w-5" />}>
               <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
                 <Card>
                   <CardHeader>
-                    <CardTitle>启动真实采集流程</CardTitle>
+                    <CardTitle>启动完整采集流程</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-5">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field label="目标平台">
-                        <div className="flex flex-wrap gap-2">
-                          {Object.entries(platformLabels).map(([key, label]) => (
-                            <Button key={key} variant={selectedPlatform === key ? "primary" : "secondary"} onClick={() => setSelectedPlatform(key)}>
-                              {label}
-                            </Button>
-                          ))}
-                        </div>
-                      </Field>
-                      <Field label="运行模式">
-                        <div className="flex flex-wrap gap-2">
-                          <Button variant={dryRun ? "primary" : "secondary"} onClick={() => setDryRun(true)}>Dry-run</Button>
-                          <Button variant={!dryRun ? "danger" : "secondary"} onClick={() => setDryRun(false)}>真实运行</Button>
-                        </div>
-                      </Field>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {Object.entries(stageLabels).map(([stage, label]) => (
-                        <button key={stage} onClick={() => void startJob(stage)} className="rounded-md border border-border bg-card p-4 text-left transition hover:border-primary">
-                          <div className="flex items-center justify-between gap-3">
-                            <strong>{label}</strong>
-                            <Play className="h-4 w-4 text-primary" />
-                          </div>
-                          <p className="mt-2 text-xs text-muted-foreground">使用当前配置快照提交任务，后台记录命令、退出码和日志。</p>
-                        </button>
-                      ))}
-                    </div>
+                    <Field label="目标平台">
+                      <div className="flex flex-wrap gap-2">
+                        {config.platforms.length ? config.platforms.map((platform) => (
+                          <PlatformBadge key={platform} platform={platform} />
+                        )) : (
+                          <Badge tone="warning">未配置平台</Badge>
+                        )}
+                      </div>
+                    </Field>
+                    <button aria-label="启动完整采集流程" onClick={() => void startFullCollection()} className="w-full rounded-md border border-primary bg-primary p-4 text-left text-primary-foreground transition hover:brightness-95">
+                      <div className="flex items-center justify-between gap-3">
+                        <strong>启动完整采集流程</strong>
+                        <Play className="h-4 w-4" />
+                      </div>
+                      <p className="mt-2 text-xs text-primary-foreground/80">使用采集配置里的平台与参数，按 24 小时采集流程提交任务，后台记录阶段、退出码和日志。</p>
+                    </button>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <Metric label="标题池目标/平台" value={config.title_target_per_platform} />
                       <Metric label="深处理上限/平台" value={config.deep_process_limit_per_platform} />
@@ -533,17 +687,21 @@ export default function App() {
                   <CardHeader>
                     <div className="flex items-center justify-between gap-3">
                       <CardTitle>任务队列与日志</CardTitle>
-                      <Button variant="secondary" onClick={() => void fetchJobs()}><RefreshCcw className="h-4 w-4" />刷新</Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{jobsRefreshedAt ? `上次刷新 ${jobsRefreshedAt}` : "每 5 秒自动刷新"}</span>
+                        <Button variant="secondary" onClick={() => void fetchJobs()}><RefreshCcw className="h-4 w-4" />刷新</Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <DataTable
-                      items={jobs}
-                      empty="暂无采集任务。先在左侧选择阶段启动 dry-run 或真实运行。"
+                      testId="collection-job-table"
+                      items={visibleJobs}
+                      empty="暂无采集任务。点击“启动完整采集流程”后，这里会显示任务状态、阶段和日志入口。"
                       columns={[
                         ["任务", (job) => <button className="font-mono text-primary hover:underline" onClick={() => void fetchJobLog(job.id)}>{job.id}</button>],
-                        ["平台", (job) => platformLabels[job.platform] || job.platform],
-                        ["阶段", (job) => stageLabels[job.stage] || job.stage],
+                        ["平台", (job) => <PlatformBadgeGroup platform={job.platform} />],
+                        ["阶段", (job) => <StageBadge stage={job.stage} />],
                         ["状态", (job) => <StatusBadge status={job.status} />],
                         ["操作", (job) => ["queued", "running", "cancelling"].includes(String(job.status)) ? (
                           <Button variant="danger" onClick={() => void cancelJob(job.id)}>停止</Button>
@@ -552,6 +710,15 @@ export default function App() {
                         )]
                       ]}
                     />
+                    {jobs.length > 0 && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">第 {jobPage} / {jobPageCount} 页，共 {jobs.length} 个任务</span>
+                        <div className="flex gap-2">
+                          <Button variant="secondary" disabled={jobPage <= 1} onClick={() => setJobPage((page) => Math.max(1, page - 1))}>上一页</Button>
+                          <Button variant="secondary" disabled={jobPage >= jobPageCount} onClick={() => setJobPage((page) => Math.min(jobPageCount, page + 1))}>下一页</Button>
+                        </div>
+                      </div>
+                    )}
                     <pre className="max-h-64 overflow-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{jobLog || "点击任务 ID 查看日志；真实失败时这里会显示 OpenCLI、登录态、平台限制或依赖错误。"}</pre>
                   </CardContent>
                 </Card>
@@ -612,11 +779,35 @@ export default function App() {
           {activePage === "标题池" && (
             <Page title="标题池" icon={<ListFilter className="h-5 w-5" />}>
               <Card>
-                <CardHeader><CardTitle>最新标题池文件{titleMeta.file ? `：${titleMeta.file}` : ""}</CardTitle></CardHeader>
+                <CardHeader>
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                    <CardTitle>最新标题池文件{titleMeta.file ? `：${titleMeta.file}` : ""}</CardTitle>
+                    <span className="text-sm text-muted-foreground">采集日期：{formatDateTime(titleMeta.collected_at)}</span>
+                  </div>
+                </CardHeader>
                 <CardContent>
+                  <div className="mb-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <label className="space-y-2">
+                      <span className="block text-xs font-semibold text-muted-foreground">检索标题池</span>
+                      <div className="flex min-h-10 items-center gap-2 rounded-md bg-muted px-3">
+                        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <input
+                          aria-label="检索标题池"
+                          className="min-h-10 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                          placeholder="输入标题、平台、关键词、摘要、ID 或链接"
+                          value={titleSearch}
+                          onChange={(event) => setTitleSearch(event.target.value)}
+                        />
+                      </div>
+                    </label>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>显示 {filteredTitles.length} / {titles.length}</span>
+                      {titleSearch && <Button variant="secondary" onClick={() => setTitleSearch("")}>清空</Button>}
+                    </div>
+                  </div>
                   <DataTable
-                    items={titles}
-                    empty={`暂无标题池数据。${titleMeta.empty_reason || "先在采集作战台运行 titles 阶段。"}`}
+                    items={filteredTitles}
+                    empty={titles.length ? "没有找到匹配的标题池数据" : "暂无标题池数据"}
                     columns={[
                       ["标题", (item) => getTitle(item)],
                       ["平台", (item) => platformLabels[item.platform] || item.platform || "-"],
@@ -637,7 +828,7 @@ export default function App() {
                 <CardContent>
                   <DataTable
                     items={videos}
-                    empty={`暂无 ASR 结果。${videoMeta.empty_reason || "先运行 videos 阶段。"}`}
+                    empty={`暂无 ASR 结果。${videoMeta.empty_reason || "先在采集操作台运行完整采集流程。"}`}
                     columns={[
                       ["标题", (item) => getTitle(item)],
                       ["下载", (item) => item.download_status || item.download?.status || "-"],
@@ -653,49 +844,62 @@ export default function App() {
 
           {activePage === "候选审阅" && (
             <Page title="候选审阅" icon={<ClipboardCheck className="h-5 w-5" />}>
-              <Card>
-                <CardHeader><CardTitle>待人工确认候选</CardTitle></CardHeader>
-                <CardContent>
-                  <DataTable
-                    items={candidates}
-                    empty="暂无候选情报。先运行采集与审议流程。"
-                    columns={[
-                      ["标题", (item) => <div><strong>{getTitle(item)}</strong><p className="text-xs text-muted-foreground">{getSummary(item)}</p></div>],
-                      ["平台", (item) => platformLabels[item.platform] || item.platform || "-"],
-                      ["状态", (item) => item.human_status || item.status || "pending"],
-                      ["分数", (item) => item.score ?? item.weight ?? "-"],
-                      ["操作", (item) => <div className="flex flex-wrap gap-2"><Button onClick={() => void postDecision(item.id, "approved")}><Check className="h-4 w-4" />确认</Button><Button variant="danger" onClick={() => void postDecision(item.id, "rejected")}><X className="h-4 w-4" />驳回</Button><Button variant="secondary" onClick={() => void moveCandidateToTrash(item.id)}>软删除</Button></div>]
-                    ]}
-                  />
-                </CardContent>
-              </Card>
+              <div className="space-y-4">
+                <CandidateReviewSection
+                  title="候选待确认"
+                  items={pendingCandidates}
+                  empty={candidates.length ? "候选待确认暂无议题。" : "暂无候选情报。先运行采集与审议流程。"}
+                  onApprove={postDecision}
+                  onReject={postDecision}
+                  onTrash={moveCandidateToTrash}
+                  onRestore={restoreCandidateFromTrash}
+                  tagCounts={candidateTagCounts}
+                />
+                {candidates.length > 0 && pendingCandidates.length === 0 && (
+                  <div className="rounded-md bg-emerald-600 px-4 py-3 text-sm font-semibold text-white">当日选题已人工确认完毕</div>
+                )}
+                <CandidateReviewSection
+                  title="已确认"
+                  items={approvedCandidates}
+                  empty="暂无已确认议题。"
+                  onApprove={postDecision}
+                  onReject={postDecision}
+                  onTrash={moveCandidateToTrash}
+                  onRestore={restoreCandidateFromTrash}
+                  tagCounts={candidateTagCounts}
+                />
+                <CandidateReviewSection
+                  title="已驳回"
+                  items={rejectedCandidates}
+                  empty="暂无已驳回议题。"
+                  onApprove={postDecision}
+                  onReject={postDecision}
+                  onTrash={moveCandidateToTrash}
+                  onRestore={restoreCandidateFromTrash}
+                  tagCounts={candidateTagCounts}
+                />
+                <CandidateReviewSection
+                  title="软删除"
+                  items={deletedCandidates}
+                  empty="暂无软删除议题。"
+                  deleted
+                  onApprove={postDecision}
+                  onReject={postDecision}
+                  onTrash={moveCandidateToTrash}
+                  onRestore={restoreCandidateFromTrash}
+                  tagCounts={candidateTagCounts}
+                />
+              </div>
             </Page>
           )}
 
           {activePage === "交叉验证" && (
             <Page title="交叉验证" icon={<ShieldAlert className="h-5 w-5" />}>
-              <RecordCards items={crossCheckItems} empty="暂无交叉验证数据。候选条目生成 cross_check 后会显示 claim、支持来源、冲突来源和补证建议。" render={(item) => (
-                <>
-                  <h3 className="font-semibold">{item.claim || getTitle(item)}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{JSON.stringify(item.cross_check || item.support_sources || item.conflict_sources || {}, null, 2)}</p>
-                </>
-              )} />
-            </Page>
-          )}
-
-          {activePage === "生成式搜索风险" && (
-            <Page title="生成式搜索风险" icon={<Radar className="h-5 w-5" />}>
-              <p className="text-sm text-muted-foreground">这里只表达疑似度和风险概率，不做事实定罪。</p>
-              <RecordCards items={geoRiskItems} empty="暂无 GEO 风险数据。候选条目生成 geo_risk 后会显示概率、等级、原因和人工备注入口。" render={(item) => {
-                const risk = item.geo_risk || {};
-                return (
-                  <>
-                    <h3 className="font-semibold">{getTitle(item)}</h3>
-                    <p className="mt-2 text-sm">概率：{risk.probability ?? item.geo_risk_score ?? "-"}；等级：{risk.level ?? "-"}</p>
-                    <p className="mt-2 text-sm text-muted-foreground">{Array.isArray(risk.reasons) ? risk.reasons.join("；") : risk.reasons || "暂无原因"}</p>
-                  </>
-                );
-              }} />
+              <RecordCards
+                items={crossCheckItems}
+                empty="暂无交叉验证数据。候选条目生成 cross_check 后会显示 claim、支持来源、冲突来源和补证建议。"
+                render={(item) => <CrossCheckCard item={item} />}
+              />
             </Page>
           )}
 
@@ -811,6 +1015,32 @@ function Page({ title, icon, children }: { title: string; icon: React.ReactNode;
   );
 }
 
+function ThemeSwitch({ mode, onChange }: { mode: ThemeMode; onChange: (mode: ThemeMode) => void }) {
+  const options: { icon: React.ReactNode; label: string; value: ThemeMode }[] = [
+    { icon: <Monitor className="h-3.5 w-3.5" />, label: "系统", value: "system" },
+    { icon: <Sun className="h-3.5 w-3.5" />, label: "浅色", value: "light" },
+    { icon: <Moon className="h-3.5 w-3.5" />, label: "深色", value: "dark" }
+  ];
+  return (
+    <div className="inline-flex rounded-md bg-muted p-1 shadow-sm">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          aria-pressed={mode === option.value}
+          className={`inline-flex min-h-8 items-center gap-1.5 rounded px-2.5 text-xs font-semibold transition ${
+            mode === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+          onClick={() => onChange(option.value)}
+          type="button"
+        >
+          {option.icon}
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
@@ -834,14 +1064,401 @@ function Metric({ label, value, tone = "neutral" }: { label: string; value: numb
 
 function StatusBadge({ status }: { status?: string }) {
   const value = status || "unknown";
-  const tone = ["succeeded", "completed", "approved", "ok"].includes(value) ? "success" : ["failed", "rejected"].includes(value) ? "danger" : "warning";
-  return <Badge tone={tone as any}>{value}</Badge>;
+  if (value === "rejected") {
+    return <Badge tone="neutral" className="bg-danger text-white dark:bg-danger dark:text-white">{statusLabels[value]}</Badge>;
+  }
+  const tone = ["succeeded", "completed", "approved", "ok"].includes(value) ? "success" : ["failed", "rejected", "deleted"].includes(value) ? "danger" : ["running", "pending"].includes(value) ? "info" : "warning";
+  return <Badge tone={tone as any}>{statusLabels[value] || value}</Badge>;
 }
 
-function DataTable({ items, empty, columns }: { items: AnyRecord[]; empty: string; columns: [string, (item: AnyRecord) => React.ReactNode][] }) {
+function StageBadge({ stage }: { stage?: string }) {
+  const value = stage || "unknown";
+  const tone = value === "all" ? "info" : value === "screen" ? "success" : "neutral";
+  return <Badge tone={tone as any}>{stageLabels[value] || value}</Badge>;
+}
+
+function PlatformBadgeGroup({ platform }: { platform?: string }) {
+  const platforms = String(platform || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!platforms.length) return <span>-</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {platforms.map((item) => <PlatformBadge key={item} platform={item} />)}
+    </div>
+  );
+}
+
+function PlatformBadge({ platform }: { platform: string }) {
+  return (
+    <Badge tone="info" icon={<PlatformIcon platform={platform} />}>
+      {formatPlatform(platform)}
+    </Badge>
+  );
+}
+
+function PlatformIcon({ platform }: { platform: string }) {
+  if (platform === "xiaohongshu") {
+    return <span className="grid h-[18px] w-[18px] place-items-center rounded-[5px] bg-red-600 text-[9px] font-black leading-none text-white">小</span>;
+  }
+  if (platform === "douyin") {
+    return <span className="grid h-[18px] w-[18px] place-items-center rounded-[5px] bg-slate-950 text-[13px] font-black leading-none text-cyan-300">♪</span>;
+  }
+  return <Globe2 className="h-3.5 w-3.5" />;
+}
+
+function CrossCheckCard({ item }: { item: AnyRecord }) {
+  const crossCheck = item.cross_check || {};
+  const supportSources = normalizeSourceList(crossCheck.supporting_sources ?? item.support_sources);
+  const conflictSources = normalizeSourceList(crossCheck.conflicting_sources ?? item.conflict_sources);
+  const needsMoreSources = Boolean(crossCheck.needs_more_sources ?? item.needs_more_sources);
+  const reasoning = formatCrossCheckReason(crossCheck.reasoning || item.cross_check_reasoning);
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold tracking-normal">{item.claim || getTitle(item)}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{getSummary(item)}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <CrossCheckStatusBadge status={crossCheck.status || item.cross_check_status} />
+          <Badge tone={needsMoreSources ? "warning" : "success"}>{needsMoreSources ? "需要补证" : "补证充足"}</Badge>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <SourcePanel title="支持来源" sources={supportSources} empty="暂无支持来源" />
+        <SourcePanel title="冲突来源" sources={conflictSources} empty="暂无冲突来源" />
+      </div>
+
+      <div className="rounded-md bg-background p-4 shadow-sm">
+        <Badge tone="neutral">智脑核验判断</Badge>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">{reasoning}</p>
+      </div>
+    </div>
+  );
+}
+
+function CrossCheckStatusBadge({ status }: { status?: string }) {
+  const value = String(status || "unverified").toLowerCase();
+  const label =
+    value === "verified" ? "已验证" :
+    value === "partially_verified" || value === "partial" ? "部分验证" :
+    value === "conflict" || value === "conflicting" ? "存在冲突" :
+    value === "unverified" ? "未验证" :
+    value;
+  const tone =
+    label === "已验证" ? "success" :
+    label === "部分验证" ? "info" :
+    label === "存在冲突" || label === "未验证" ? "warning" :
+    "neutral";
+  return <Badge tone={tone as any}>{label}</Badge>;
+}
+
+function SourcePanel({ title, sources, empty }: { title: string; sources: string[]; empty: string }) {
+  return (
+    <div className="rounded-md bg-background p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <Badge tone="neutral">{title}</Badge>
+        <span className="text-xs text-muted-foreground">{sources.length} 条</span>
+      </div>
+      {sources.length ? (
+        <div className="grid gap-2">
+          {sources.map((source, index) => (
+            <div key={`${source}-${index}`} className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+              {formatSourceLabel(source)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{empty}</p>
+      )}
+    </div>
+  );
+}
+
+function normalizeSourceList(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  return [String(value).trim()].filter(Boolean);
+}
+
+function formatSourceLabel(source: string): string {
+  if (!source || source === "redacted") return "来源缺失";
+  return source;
+}
+
+function formatCrossCheckReason(reason?: string): string {
+  if (!reason) return "暂无明确核验判断。";
+  const normalized = reason.trim();
+  if (normalized.includes("Multiple posts from Xiaohongshu about the same hotel")) {
+    return "小红书上多条同类内容相互印证，说明该议题有热度；但目前缺少独立平台或官方来源，所以真实性和商业推广属性仍需要继续确认。";
+  }
+  if (normalized.includes("Single detailed post")) {
+    return "目前主要来自单条详细内容，虽然旅行论坛或社媒上可能有相似讨论，但还需要直接补充来源来确认。";
+  }
+  if (normalized.includes("Three separate Xiaohongshu posts corroborate")) {
+    return "三条不同小红书内容指向同一事件，社媒层面的可信度较高；如果要作为正式判断，仍建议补充官方公告或现场来源。";
+  }
+  if (/^[\x00-\x7F\s.,;:'"!?()/-]+$/.test(normalized)) {
+    return `该核验判断来自英文审议结果，后续需要智脑统一翻译。原始判断：${normalized}`;
+  }
+  return normalized;
+}
+
+function CandidateReviewSection({
+  title,
+  items,
+  empty,
+  deleted = false,
+  onApprove,
+  onReject,
+  onTrash,
+  onRestore,
+  tagCounts,
+}: {
+  title: string;
+  items: AnyRecord[];
+  empty: string;
+  deleted?: boolean;
+  onApprove: (id: string, status: "approved" | "rejected") => Promise<void>;
+  onReject: (id: string, status: "approved" | "rejected") => Promise<void>;
+  onTrash: (id: string) => Promise<void>;
+  onRestore: (id: string) => Promise<void>;
+  tagCounts: Record<string, number>;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>{title}</CardTitle>
+          <Badge tone={items.length ? "info" : "neutral"}>{items.length}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {items.length ? (
+          <div className="grid gap-3">
+            {items.map((item) => (
+              <CandidateReviewCard
+                key={item.id}
+                item={item}
+                deleted={deleted}
+                onApprove={onApprove}
+                onReject={onReject}
+                onTrash={onTrash}
+                onRestore={onRestore}
+                tagCounts={tagCounts}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState text={empty} />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CandidateReviewCard({
+  item,
+  deleted,
+  onApprove,
+  onReject,
+  onTrash,
+  onRestore,
+  tagCounts,
+}: {
+  item: AnyRecord;
+  deleted: boolean;
+  onApprove: (id: string, status: "approved" | "rejected") => Promise<void>;
+  onReject: (id: string, status: "approved" | "rejected") => Promise<void>;
+  onTrash: (id: string) => Promise<void>;
+  onRestore: (id: string) => Promise<void>;
+  tagCounts: Record<string, number>;
+}) {
+  const originalTitle = getOriginalTitle(item);
+  const originalSummary = getOriginalSummary(item);
+  const translatedTitle = getReverseTranslatedTitle(item, originalTitle);
+  const translatedSummary = getReverseTranslatedSummary(item, originalTitle);
+  return (
+    <div className="rounded-md bg-muted/45 p-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_120px_112px_112px_220px] xl:items-center">
+        <div className="min-w-0 space-y-3">
+          <div data-testid="candidate-original-panel" className="rounded-md bg-slate-950 p-4 text-white shadow-sm dark:bg-slate-950">
+            <Badge tone="neutral">原文</Badge>
+            <h3 className="mt-3 text-base font-semibold tracking-normal text-white">{originalTitle}</h3>
+            <p className="mt-2 text-sm text-slate-300">{originalSummary}</p>
+          </div>
+          <div className="rounded-md bg-background p-3">
+            <Badge tone="neutral">翻译</Badge>
+            <p className="mt-2 text-sm font-medium">{translatedTitle}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{translatedSummary}</p>
+          </div>
+          <CandidateTagHeat tags={getCandidateTags(item)} tagCounts={tagCounts} />
+        </div>
+        <div className="flex items-center justify-center"><PlatformBadgeGroup platform={item.platform} /></div>
+        <div className="flex items-center justify-center"><StatusBadge status={deleted ? "deleted" : item.human_status || item.status || "pending"} /></div>
+        <div className="flex items-center justify-center"><ScoreBadge score={item.score ?? item.weight} /></div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {!deleted && <Button onClick={() => void onApprove(item.id, "approved")}><Check className="h-4 w-4" />确认</Button>}
+          {!deleted && <Button variant="danger" onClick={() => void onReject(item.id, "rejected")}><X className="h-4 w-4" />驳回</Button>}
+          {deleted ? (
+            <Button variant="secondary" onClick={() => void onRestore(item.id)}>撤销删除</Button>
+          ) : (
+            <Button variant="secondary" onClick={() => void onTrash(item.id)}>软删除</Button>
+          )}
+        </div>
+      </div>
+      <GeoRiskNotice item={item} />
+    </div>
+  );
+}
+
+function getOriginalTitle(item: AnyRecord): string {
+  return item.title_original || item.original_title || item.raw_title || item.title || item.display?.title || getTitle(item);
+}
+
+function getOriginalSummary(item: AnyRecord): string {
+  return item.summary_original || item.original_summary || item.raw_summary || item.summary || item.text || item.display?.summary || "暂无原文摘要";
+}
+
+function getReverseTranslatedTitle(item: AnyRecord, originalTitle: string): string {
+  if (hasChineseText(originalTitle)) {
+    return item.display?.title_en || item.title_en || item.en_title || item.translated_title || item.display?.title || "暂无英文翻译";
+  }
+  return item.display?.title_zh || item.title_zh || item.zh_title || item.translated_title || "暂无中文翻译";
+}
+
+function getReverseTranslatedSummary(item: AnyRecord, originalTitle: string): string {
+  if (hasChineseText(originalTitle)) {
+    return item.display?.summary_en || item.summary_en || item.en_summary || item.translated_summary || item.display?.summary || "暂无英文翻译摘要";
+  }
+  return item.display?.summary_zh || item.summary_zh || item.zh_summary || item.translated_summary || "暂无中文翻译摘要";
+}
+
+function hasChineseText(value: string): boolean {
+  return /[\u4e00-\u9fff]/.test(value);
+}
+
+function CandidateTagHeat({ tags, tagCounts }: { tags: string[]; tagCounts: Record<string, number> }) {
+  if (!tags.length) return null;
+  return (
+    <div className="rounded-md bg-background p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <Badge tone="neutral">标签热度</Badge>
+        <span className="text-xs text-muted-foreground">按当日候选重复度计算</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {tags.map((tag) => (
+          <span key={tag} className={`inline-flex min-h-8 items-center rounded-md px-3 text-xs font-bold shadow-sm ${getTagHeatClass(tag, tagCounts)}`}>
+            {tag} ×{tagCounts[tag] || 1}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function buildTagCounts(items: AnyRecord[]): Record<string, number> {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    getCandidateTags(item).forEach((tag) => {
+      counts[tag] = (counts[tag] || 0) + 1;
+    });
+    return counts;
+  }, {});
+}
+
+function getCandidateTags(item: AnyRecord): string[] {
+  const raw = [
+    item.tags,
+    item.advisor_tags,
+    item.topic_tags,
+    item.signals,
+    item.category,
+  ].flatMap((value) => Array.isArray(value) ? value : value ? [value] : []);
+  return Array.from(new Set(raw.map((tag) => String(tag).trim()).filter(Boolean))).slice(0, 8);
+}
+
+function getTagHeatClass(tag: string, tagCounts: Record<string, number>): string {
+  const count = tagCounts[tag] || 1;
+  const values = Object.values(tagCounts).filter((value) => value > 0);
+  const min = Math.min(...values, count);
+  const max = Math.max(...values, count);
+  if (max === min) {
+    return max > 1 ? "bg-red-600 text-white" : "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100";
+  }
+  const heat = (count - min) / (max - min);
+  if (heat >= 0.8) return "bg-red-600 text-white";
+  if (heat >= 0.6) return "bg-orange-600 text-white";
+  if (heat >= 0.4) return "bg-amber-500 text-white";
+  if (heat >= 0.2) return "bg-lime-500 text-white";
+  return "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100";
+}
+
+function ScoreBadge({ score }: { score?: number | string }) {
+  const parsed = Number(score);
+  if (Number.isNaN(parsed)) return <Badge tone="neutral">-</Badge>;
+  const value = Math.max(0, Math.min(100, Math.round(parsed)));
+  const color =
+    value >= 81 ? "bg-emerald-600 text-white" :
+    value >= 61 ? "bg-lime-600 text-white" :
+    value >= 41 ? "bg-amber-500 text-white" :
+    value >= 21 ? "bg-orange-600 text-white" :
+    "bg-red-600 text-white";
+  return <span className={`grid h-12 min-w-12 place-items-center rounded-md px-3 text-lg font-black ${color}`}>{value}</span>;
+}
+
+function GeoRiskNotice({ item }: { item: AnyRecord }) {
+  const risk = item.geo_risk || {};
+  const probability = normalizeProbability(risk.probability ?? item.geo_risk_score ?? item.geo_risk_probability) ?? 0;
+  const probabilityText = `${Math.round(probability * 100)}%`;
+  const riskClass = probability >= 0.7 ? "text-red-600" : probability >= 0.5 ? "text-orange-600" : probability >= 0.3 ? "text-amber-600" : "text-emerald-600";
+  const reasons = Array.isArray(risk.reasons) ? risk.reasons.join("；") : risk.reasons;
+  return (
+    <div className="mt-4 rounded-md bg-white p-4 text-sm shadow-sm dark:bg-slate-950">
+      <div className="flex flex-wrap items-center gap-2">
+        <Radar className={`h-4 w-4 ${riskClass}`} />
+        <strong>生成式搜索风险</strong>
+        <span className={`font-black ${riskClass}`}>{probabilityText}</span>
+        <Badge tone={probability >= 0.6 ? "danger" : "neutral"}>{formatGeoRiskLevel(risk.level, probability)}</Badge>
+      </div>
+      <p className="mt-2 text-muted-foreground">智脑分析原因：{reasons || "暂无明确原因。"}</p>
+    </div>
+  );
+}
+
+function normalizeProbability(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized.endsWith("%")) return Math.max(0, Math.min(1, Number(normalized.slice(0, -1)) / 100));
+    if (normalized === "high") return 0.8;
+    if (normalized === "medium") return 0.5;
+    if (normalized === "low") return 0.2;
+  }
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return null;
+  return Math.max(0, Math.min(1, numeric > 1 ? numeric / 100 : numeric));
+}
+
+function formatGeoRiskLevel(level: unknown, probability: number | null): string {
+  const normalized = String(level || "").toLowerCase();
+  if (normalized === "high") return "高风险";
+  if (normalized === "medium") return "中风险";
+  if (normalized === "low") return "低风险";
+  if (normalized === "very_low" || normalized === "minimal") return "极小风险";
+  if (probability === null) return "未评级";
+  if (probability >= 0.7) return "高风险";
+  if (probability >= 0.4) return "中风险";
+  if (probability <= 0.05) return "极小风险";
+  return "低风险";
+}
+
+function DataTable({ items, empty, columns, testId }: { items: AnyRecord[]; empty: string; columns: [string, (item: AnyRecord) => React.ReactNode][]; testId?: string }) {
   if (!items.length) return <EmptyState text={empty} />;
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
+    <div data-testid={testId} className="overflow-x-auto rounded-md border border-border">
       <table className="w-full min-w-[720px] text-left text-sm">
         <thead className="bg-muted text-xs text-muted-foreground">
           <tr>{columns.map(([label]) => <th key={label} className="px-3 py-2 font-semibold">{label}</th>)}</tr>

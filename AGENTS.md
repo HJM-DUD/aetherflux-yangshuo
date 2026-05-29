@@ -1,243 +1,224 @@
-# AGENTS.md - 以太通量 / AetherFlux Project Memory
+# AGENTS.md — 以太通量 / AetherFlux 项目记忆（V0.2.4）
 
-## User And Safety Rules
+> **读者**：这是给 Codex 看的项目记忆文件。Codex 每次对话都会读取它，用来理解项目是什么、怎么分层、每个文件干什么。
 
-- 用户名字叫 GuGU，对编程只是略懂皮毛；回答和交付要清楚、耐心、少假设。
-- 禁止批量删除文件或目录。
-- 不要使用：
-  - `del /s`
-  - `rd /s`
-  - `rmdir /s`
-  - `Remove-Item -Recurse`
-  - `rm -rf`
-- 需要删除文件时，只能一次删除一个明确路径的文件。
-- 如果需要批量删除文件，应停止操作，并请求用户手动删除。
-- API key、cookie、token、账号密码等敏感信息不能写进仓库、文档、测试、前端代码或提交记录；DeepSeek key 只能通过环境变量或本机 `.env` 读取。
+---
 
-## Project Goal
+## 1. 项目身份
 
-本项目中文名是“以太通量”，目录名是 `AetherFlux_yitaitongliang`。
+- **中文名**：以太通量 / 目录名：`AetherFlux_yitaitongliang`
+- **当前子项目**：旅游情报决策系统
+- **版本**：V0.2.4（2026-05-29）
+- **定位**：服务 GuGU 自己做内容选题、项目判断、风险识别、交叉验证、线上运营和后续 agent 决策。**不是游客攻略站，不是对外 SaaS。**
+- **技术栈**：Python 3.9+ / FastAPI + React/Vite + Tailwind + SQLite / OpenCLI Browser Bridge
+- **总目标**：最终做成 GuGU 自用的大型 agent 应用；外部人员只通过另行设计的 Web 端使用，不直接维护本机 Triagent 系统。
 
-当前实施的子项目是“阳朔旅游情报决策系统”，用于 GuGU 自己做内容选题、项目判断、风险识别、交叉验证、GEO 疑似度判断和后续运营 agent 的数据依据。
+### 五大部分总框架
 
-它不是普通游客攻略站，也不是第一阶段给商家看的 SaaS。未来可以开放部分已审核内容给商家，但第一版只服务内部判断。
+1. **情报收集站**：V0.2.x 当前主线。由 Hermes 或本地脚本承担长期采集调度，采集指定账号、公开平台搜索结果、评论、视频 ASR、官方信源和人工高权重消息，形成候选情报和每日资料包。
+2. **超级智脑**：后续主线。调用 Codex / Hermes / Antigravity / DeepSeek，对资料包做真假判断、机会识别、风险识别、权重调整、交叉验证和决策建议。
+3. **线上运维中心**：后续。管理 GuGU 的互联网账号规划、内容节奏、维护、获客和运营动作。
+4. **内容生成工厂**：后续。根据情报和运营决策生成图文、视频、图片、笔记、脚本等内容，接入多模态工作流。
+5. **线下经营智控**：后续。管理客户、行程、成本、资源和经营执行，例如旅游行业的行程规划、报价与履约控制。
 
-## Current Architecture
+V0.2.x 不要把第二到第五部分硬做成假功能，只需要为它们保留清晰接口、数据结构和页面入口。第一部分的数据量和质量是后续四部分的地基。
 
-阳朔情报中心作为“以太通量”主项目内的子项目实施，由 Codex 作为每日情报控制 agent。V0.2.0 开始，第一部分“情报收集站”采用本地优先路线：Mac 可本机运行；如 Mac 压力过大，可迁移到 PC worker 24 小时采集，Mac 读取每日资料包进入第二部分。
+### Web 与权重原则
 
-V0.2.3 开始，真实采集优先走 OpenCLI Browser Bridge：小红书/抖音先建立最近 24 小时标题池，再由 Hermes 按机会/风险筛选，最后只对筛中的视频做本地 ASR 转写。抽帧不是重点，完整语音转文字才是后续“超级智脑”判断视频内容的第一依据。
+- 所有人机交互默认落到 Web 端：后台给 GuGU 调整采集、审阅、定稿、人工干预；前端给多人登录查看情报结果。
+- Web 端设计默认遵循 UI UX Pro Max：高信息密度、专业工具感、清晰表格和可操作控件，避免做成宣传页。
+- 采集方向必须可由 GuGU 人工配置：地点（如武汉、帕劳、阳朔）、行业（V0.2.x 先旅游）、细分类别（景区、民宿、酒店、旅游餐饮、疗愈等）和自定义搜索词。
+- 平台设计要保留扩展位：当前优先小红书、抖音；后续接视频号、Instagram、TikTok、OTA 和更多公开平台。
+- 权重分级统一使用 `T1` 到 `T5`：`T1` 最高权重（例如 GuGU 手动录入的内部消息），`T2` 高权重，`T3` 中权重，`T4` 次级权重，`T5` 低权重。
+- 人工特别信息干预入口必须保留；这类信息可以作为最高权重情报进入审议，但仍需标注来源为人工输入。
 
-系统现在按项目内模块分层：
+---
 
-1. **Collector Layer**
-   - 负责平台采集和平台适配。
-   - V0.2.0 第一优先平台是小红书、抖音、视频号，重点是视频内容、评论内容、同题讨论和基础官方信源辅助监控。
-   - 每个平台必须输出统一 raw item schema，不能让平台差异污染后续流程。
-   - `hard_dedupe_key` 只用于完全重复内容；不同用户讨论同一事件必须保留，并进入 `topic_cluster_key` 同题聚类。
+## 2. 安全规则（本项目特有）
 
-2. **Normalization Layer**
-   - 清洗正文、统一时间、识别语言、保存来源链接、保留原始证据。
-   - 中间处理阶段不强制生成中英对照，避免浪费 token。
+1. **禁止批量删除**：`rm -rf`、`del /s`、`rd /s`、`rmdir /s`、`Remove-Item -Recurse` 全部封禁。需要删文件时一次只删一个明确路径；需要批量删除时停止操作，请 GuGU 手动处理。
+2. **回收站**：前端多选删除只进入软删除回收站，14 天内可恢复；14 天后只标记「可清理」，不执行批量物理删除。
+3. **敏感信息**：API key、cookie、token、密码不写仓库、文档、测试、前端代码或提交记录。DeepSeek key 只能通过环境变量或 `.env` 读取。
+4. **Supabase 边界**：Supabase Cloud 只用于登录和每日轻量日志索引。**不上传**：原始情报正文、评论全文、截图、HTML、视频帧、音频、转写全文。
+5. **本地证据**：原始证据默认本地保留 48 小时，可在后台 `GET/POST /api/v1/admin/retention` 调整。
+6. **高风险操作**：凭据、隐私文件、浏览器登录态、外部账号动作、删除/迁移、跨模块大改、支付/发布必须先问 GuGU。
 
-3. **Scoring Layer**
-   - 低 token 规则评分、去重、基础分类、平台权重、新鲜度、互动热度、阳朔相关度、风险词、机会词。
-   - 普通清洗、去重、关键词匹配不调用大模型。
+---
 
-4. **Cross Verification Center**
-   - 负责 claim 拆解、来源独立性判断、跨平台支持/冲突检查、真假信息风险提示。
-   - 重要信息不能只因为单个平台热就直接采信。
+## 3. Triagent 协作规则（浓缩）
 
-5. **GEO Risk Judge**
-   - GEO 指 Generative Engine Optimization，即影响 ChatGPT、Gemini、Perplexity 等 AI 搜索/大模型回答的“标准答案”塑造行为。
-   - 本项目只输出 GEO 疑似度、叙事操控风险、信息污染概率，不做定性指控。
-   - 字段应包含 `geo_risk.probability`、`geo_risk.level`、`geo_risk.reasons`。
+Codex 是主脑，Hermes（DeepSeek）和 Antigravity（Gemini）是子 agent。
 
-6. **DeepSeek V4 Advisor Layer**
-   - DeepSeek V4 是可插拔“智库层”，由 Codex 调度参与每日审议、交叉验证建议、GEO 疑似度、内容机会、风险提醒和中英展示润色。
-   - 默认模型：`deepseek-v4-pro`。
-   - 配置来源：
-     - `DEEPSEEK_API_KEY`
-     - `DEEPSEEK_BASE_URL=https://api.deepseek.com`
-     - `DEEPSEEK_MODEL_ADVISOR=deepseek-v4-pro`
-   - 无 key 或 API 失败时必须回退到本地规则审议，不阻断每日流程。
+- **Hermes 适合**：代码搜索、文件梳理、日志分析、依赖盘点、低/中风险机械改动、明确路径内的小范围实现。不要把图片塞给 Hermes。
+- **Antigravity 适合**：多模态、长上下文、前端/原型、Google 生态、替代方案分析。
+- **`/all`**：超复杂任务，Codex 先定义问题，三方交叉验证，Codex 最终裁决。
+- **子 agent 任务包**：必须包含删除规则、当前工作目录、是否允许编辑、允许路径、输出格式和停止条件。
+- **正式任务优先走 `triagent run`**（网页观察台可看到日志），直接 CLI 仅备用/调试。
+- **Codex 必须审查子 agent 的 diff**，运行验证命令，再向 GuGU 汇报。
 
-7. **Codex Review Brain**
-   - Codex 是每日情报审议总控。
-   - 自动生成待审稿，但不自动发布。
-   - 对候选信息组织多角色审议、调用 DeepSeek 智库层、提出人工确认问题。
+---
 
-8. **Human Gate + Web/API**
-   - 人工确认后才进入网页精选、日报和正式 API。
-   - 人工审阅页和最终呈现页要支持中英对照，尤其外网平台内容。
-   - 翻译只发生在人工审阅前和最终网页/API 呈现前，中间采集处理不做双语扩写。
+## 4. 架构分层（V0.2.4 实际文件映射）
 
-## Implemented MVP
-
-当前已实现一个 Python 本地优先闭环，并开始进入 V0.2.0 本地视频情报采集站：
-
-- 低 token 评分与去重：`aetherflux/scoring.py`
-- DeepSeek 配置与 JSON client：`aetherflux/deepseek.py`
-- 智库层回退/合并逻辑：`aetherflux/advisor.py`
-- 多角色审议草稿：`aetherflux/review.py`
-- SQLite 存储与人工决策：`aetherflux/storage.py`
-- V0.2.0 采集基础模型：`aetherflux/collector_model.py`
-- API payload 组装：`aetherflux/api.py`
-- 本地网页/API 服务：`aetherflux/server.py`
-- 命令行入口：`aetherflux/cli.py`
-- 配置驱动流水线：`aetherflux/pipeline.py`
-- 网页前端：`aetherflux/web/`
-- 默认方向配置：`config/directions.json`
-- 样本数据：`data/seed_items.json`
-- 每日审议脚本：`scripts/daily_review.sh`
-- 架构文档：`docs/architecture.md`
-
-## How To Run
-
-测试：
-
-```bash
-python3 -m unittest discover -s tests
-python3 -m compileall aetherflux
+```
+┌─────────────────────────────────────────────────┐
+│  Collector Layer（采集层）                        │
+│  collector_model.py   统一 raw item schema       │
+│  xhs.py               小红书离线 JSON feed 驱动   │
+│  live_collectors.py   Chrome CDP 实时采集 (V0.2.1)│
+│  live_rotation.py     自适应轮转慢采集调度         │
+│  opencli_collectors.py OpenCLI Browser Bridge (V0.2.2→V0.2.3主路线)│
+│  query_planner.py     混合关键词池规划             │
+├─────────────────────────────────────────────────┤
+│  Normalization Layer（清洗层）                    │
+│  freshness.py         24h新鲜度解析与过滤          │
+│  quality.py           采集质量闸门                 │
+├─────────────────────────────────────────────────┤
+│  Scoring Layer（评分层）                          │
+│  scoring.py           低token规则评分/去重/分类/权重│
+├─────────────────────────────────────────────────┤
+│  Review Layer（审议层）                           │
+│  review.py            多角色审议 + 交叉验证 + GEO   │
+│  deepseek.py          DeepSeek JSON client        │
+│  advisor.py           智库层回退/合并逻辑           │
+├─────────────────────────────────────────────────┤
+│  ASR Pipeline（视频深处理）                       │
+│  asr_pipeline.py      音频提取→ASR转写→分段→摘要   │
+├─────────────────────────────────────────────────┤
+│  Storage（存储层）                                │
+│  storage.py           SQLite + 候选状态管理        │
+├─────────────────────────────────────────────────┤
+│  API & Server（服务层）                           │
+│  admin_api.py         V0.2.4 FastAPI /api/v1/*    │
+│  server.py            V0.1 旧静态 HTTP（备用）      │
+│  api.py               payload 组装 + 旧 /api/* 兼容│
+├─────────────────────────────────────────────────┤
+│  Frontend（前端）                                 │
+│  web/                 V0.1 旧静态 HTML/CSS/JS      │
+│  web-admin/           V0.2.4 React/Vite + shadcn   │
+├─────────────────────────────────────────────────┤
+│  CLI & Pipeline（入口）                           │
+│  cli.py               命令入口                     │
+│  pipeline.py          配置驱动流水线               │
+├─────────────────────────────────────────────────┤
+│  Config（配置）                                   │
+│  config/directions.json     地点/主题/平台权重     │
+│  config/live_collect.json   V0.2.1+ 采集参数       │
+└─────────────────────────────────────────────────┘
 ```
 
-跑一次样本采集和审议：
+### 辅助目录
 
-```bash
-python3 -m aetherflux.cli ingest
-python3 -m aetherflux.cli review
+| 目录 | 说明 |
+|------|------|
+| `tests/` | 覆盖评分、审议、存储、API、采集、ASR、前端等 19 个测试文件 |
+| `scripts/` | `daily_review.sh`、`hermes_collect_opencli.sh`、`open_chrome_cdp.sh` 等 |
+| `data/` | `seed_items.json`（样本）、`aetherflux.db`（本地库，.gitignore） |
+| `artifacts/` | 截图、采集输出、验证产物（.gitignore） |
+| `logs/` | 采集日志（.gitignore） |
+| `dist/` | `npm run build` 产物（.gitignore） |
+| `docs/` | `architecture.md` 架构文档 |
+
+---
+
+## 5. 数据流
+
+```
+后台配置 mission → 混合关键词池 → OpenCLI 标题池（24h 过滤）
+→ Hermes 初筛 → 视频 ASR 深处理 → 本地 SQLite 入库
+→ 评分去重 → 交叉验证 → GEO 疑似度 → DeepSeek 智库审议
+→ 人工确认（pending→approved）→ /api/v1/intelligence/* 输出
+→ 每日资料包 → 第二部分「超级智脑」
 ```
 
-启动本地网页：
+关键概念：
 
-```bash
-python3 -m aetherflux.cli serve --host 127.0.0.1 --port 8788
-```
+- **`hard_dedupe_key`**：只在完全重复时合并（同 URL、同平台 ID、同媒体指纹）
+- **`topic_cluster_key`**：不同用户讨论同一事件保留原内容，聚合热度
+- **ASR 优先**：完整语音转文字是视频理解第一依据，抽帧默认关闭
+- **`geo_risk`**：只输出 `probability` / `level` / `reasons`，不做定性指控
 
-访问：
+---
 
-```text
-http://127.0.0.1:8788
-```
+## 6. 关键产品决策
 
-`8765` 端口保留给 Triagent；本地 worker/API 预留 `8789`。
+1. **本地优先**：原始情报、评论、音频、转写只存本地/NAS。Supabase 只做登录 + 日志索引。
+2. **ASR > 抽帧**：完整语音转写才是理解视频内容的核心。
+3. **人工闸门**：自动审议但不自动发布。`pending` → 人工确认 `approved` → 才进入 `/api/v1/intelligence/*`。
+4. **GEO 只表达概率**：疑似度、叙事操控风险、信息污染概率，不做事实定性。
+5. **评论是重点**：热评、最新评论、作者回复、风险/机会词命中评论分层采集。相似评论保留为热度/水军信号。
+6. **去重≠删讨论**：不同人说同一件事 = 重要信号，用 `topic_cluster_key` 聚合而非删除。
+7. **中英对照**：只在人工审阅前和最终网页/API 呈现前生成。中间采集处理不做双语扩写，省 token。
+8. **第一版优先小红书**，架构已为抖音、视频号多平台准备。国内外平台都覆盖。
+9. **DeepSeek V4**：可插拔智库层，参与审议/GEO/润色，不参与低价值机械清洗。无 key 时回退规则审议。
+10. **官方信源**：独立模块，地点/行业变化后必须重新确认，不自动沿用。
 
-每日脚本：
+---
 
-```bash
-scripts/daily_review.sh
-```
+## 7. 入口命令速查
 
-带通用 Webhook：
+| 命令 | 说明 |
+|------|------|
+| `python3 -m aetherflux.cli serve` | 启动 V0.2.4 FastAPI 后台（默认 127.0.0.1:8788） |
+| `python3 -m aetherflux.cli legacy-serve` | V0.1 旧静态后台（备用） |
+| `python3 -m aetherflux.cli ingest` | 样本采集与评分 |
+| `python3 -m aetherflux.cli review` | 生成审议草稿 |
+| `python3 -m aetherflux.cli opencli-rotate` | OpenCLI 采集轮转 |
+| `python3 -m aetherflux.cli live-rotate` | CDP 采集轮转（旧） |
+| `scripts/hermes_collect_opencli.sh` | Hermes 完整采集流程 |
+| `npm run build && npm test` | 前端构建 + 测试 |
 
-```bash
-AETHERFLUX_WEBHOOK_URL="https://your-webhook.example.com" scripts/daily_review.sh
-```
+端口：`8765`（Triagent）、`8788`（AetherFlux Web）、`8789`（预留 worker/API）。
 
-DeepSeek 智库层本地配置示例：
+DeepSeek 配置：`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL_ADVISOR=deepseek-v4-pro`。
 
-```bash
-export DEEPSEEK_API_KEY="your-local-key"
-export DEEPSEEK_BASE_URL="https://api.deepseek.com"
-export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
-```
+---
 
-## Important Product Decisions
+## 8. V0.2.4 主 API（`/api/v1/*`）
 
-- 第一版优先小红书，但架构必须支持多平台扩展。
-- 国内外平台都要考虑；阳朔是全球知名旅游目的地，外网信号不能缺席。
-- AI HOT 是重要参考，但本项目呈现要更偏“旅游情报决策台”，不是泛资讯流。
-- 网页要好看、有深度，但信息密度应服务内部判断，不做营销落地页。
-- 信息交叉验证是核心能力，不是后续附属功能。
-- GEO 只表达疑似度和风险概率，不表达事实定罪。
-- DeepSeek V4 作为智库层参与审议，不参与低价值机械清洗。
-- 自动审议但不自动发布，人工确认后才进入网页和正式 API。
-- Supabase Cloud 不保存原始情报、截图、HTML、音视频、评论全文或转写全文；只用于登录和每日轻量日志索引。
-- 原始证据默认本地保留 48 小时，可在后台调整；后续可把数据根目录和证据根目录指向 NAS。
+- `GET /api/v1/dashboard/summary`
+- `GET/PUT /api/v1/collection/config`
+- `GET/POST /api/v1/collection/jobs`
+- `GET /api/v1/collection/jobs/{job_id}`
+- `GET /api/v1/collection/jobs/{job_id}/log`
+- `POST /api/v1/collection/jobs/{job_id}/cancel`
+- `GET /api/v1/intelligence/candidates`
+- `POST /api/v1/intelligence/decisions`
+- `GET /api/v1/intelligence/selected`
+- `GET /api/v1/intelligence/daily`
+- `GET /api/v1/intelligence/opportunities`
+- `GET /api/v1/intelligence/foreign-signals`
+- `GET /api/v1/intelligence/risks`
+- `GET/POST /api/v1/admin/official-sources`
+- `GET/POST /api/v1/admin/retention`
+- `GET /api/v1/daily-bundles`
+- `GET /api/v1/cloud-log-syncs`
+- `GET/POST /api/v1/trash` / `/api/v1/trash/restore` / `/api/v1/trash/mark-cleanable`
+- `GET /api/v1/system/status` / `/api/v1/system/deepseek-smoke-test` / `/api/v1/system/opencli-doctor` / `/api/v1/system/diagnose`
+- `GET /api/v1/title-pool` / `/api/v1/video-processing`
+- `GET /api/v1/agent/apis` / `/api/v1/release/status`
 
-## Human Gate
+旧 `/api/*` 只做旧壳兼容，V0.2.4 主接口已统一迁移到 `/api/v1/*`。
 
-候选情报默认是 `pending`。
+---
 
-只有人工确认成 `approved` 后，才进入：
+## 9. 当前限制（V0.2.4）
 
-- `/api/selected`
-- `/api/daily`
-- `/api/opportunities`
-- `/api/foreign-signals`
-- `/api/risks`
-- `/api/evidence/:id`
-- `/api/content-briefs`
+- 视频号无稳定网页端内容入口，暂时跳过。
+- 小红书/抖音采集依赖 OpenCLI Browser Bridge + Chrome 登录态，采集稳定性仍在打磨。
+- `data/seed_items.json` 只是样本输入，不是真实平台采集器。
+- PC worker 部署方案未完成。
+- 第二部分「超级智脑」（每日资料包消费、权重/真假/广告判断）尚未开始。
 
-`rejected` 条目不会进入新的审议草稿。
+---
 
-## Current API
+## 10. 版本管理
 
-- `GET /api/candidates`：候选池
-- `GET /api/selected`：已确认精选
-- `GET /api/daily`：日报结构
-- `GET /api/opportunities`：项目机会
-- `GET /api/foreign-signals`：外网/外语信号
-- `GET /api/risks`：风险预警
-- `GET /api/evidence/:id`：证据链
-- `GET /api/content-briefs`：后续内容运营 agent 的选题简报
-- `POST /api/decisions`：人工确认、驳回、调整权重
-- `POST /api/run-ingest`：触发采集与基础评分
-- `POST /api/run-review`：生成待审稿
-- `GET/POST /api/admin/retention`：本地证据和云日志索引保留设置
-- `GET/POST /api/admin/official-sources`：官方信源配置
-- `POST /api/admin/missions`：mission 更新，地点/行业/细分变化会标记官方信源需要复核
-- `GET /api/daily-bundles`：每日资料包索引
-- `GET /api/cloud-log-syncs`：Supabase 轻量日志同步和清理记录
-
-候选和精选 payload 可包含：
-
-- `display.title_zh`
-- `display.title_en`
-- `display.summary_zh`
-- `display.summary_en`
-- `translation_status`
-- `advisor_notes`
-- `cross_check`
-- `geo_risk`
-
-## Current Caveats
-
-- `data/seed_items.json` 目前只是样本输入，不是真实平台采集器。
-- `data/aetherflux.db` 是本地运行数据库，已被 `.gitignore` 忽略。
-- `artifacts/` 是本地截图/验证产物，已被 `.gitignore` 忽略。
-- 当前网页/API 使用 Python 标准库 HTTP server，适合 MVP 和内网验证；后续可迁移 FastAPI。
-- 视频号视频采集器还未完整实现；V0.2.3 已先把小红书/抖音推进到 OpenCLI 登录态标题池、最近 24 小时过滤、Hermes 初筛和本地 ASR 深处理框架。
-
-## Recommended Next Steps
-
-1. 完成真实小红书、抖音、视频号登录态视频采集 adapter。
-2. 接入本地 ASR，把视频音频转成分段文字。
-3. 完成 PC worker 部署脚本和每日资料包读取流程。
-4. 完成后台采集控制页、官方信源页、保留时长页和云日志页。
-5. 第二部分“超级智脑”读取每日资料包，做权重、真假、广告和项目价值判断。
-
-## 版本管理 / Versioning Rules
-
-本项目使用 [Semantic Versioning](https://semver.org/lang/zh-CN/)，格式为 `V主版本.次版本.修订号`（如 `V0.1.0`）。
-
-从 V0.2.3 开始，每个正式版本都必须同步 GitHub 仓库并发布版本号；不能再只写本地更新日志。
-
-### 每次版本更新必须执行
-
-1. **更新 `CHANGELOG.md`**：在文件顶部按格式新增版本条目，记录新增、变更、修复、移除等内容。
-2. **提交并推送 GitHub**：验证通过后提交到当前版本分支，并推送 `main` 到 `origin`。
-3. **Git 标签**：在对应 commit 上打 annotated tag，格式 `v0.1.0`（小写 v），并推送标签到 GitHub。
-   ```bash
-   git push origin main
-   git tag -a v0.1.0 -m "V0.1.0 初始版本"
-   git push origin v0.1.0
-   ```
-4. **GitHub Release**：如果 `gh` 已安装并已登录，创建对应 Release；如果未登录，必须在最终汇报中说明 tag 已推送但 Release 需要补发。
-
-### 文档语言规范
-
-- 项目主 README（`README.md`）以中文书写，面向中文使用者。
-- 英文使用者请查阅 `README_EN.md`。
-- 所有代码注释、提交信息、升级日志均可使用中文。
-- AGENTS.md 为本项目的记忆文件，Codex 在每次对话中都会读取。
+- **SemVer**：`V主版本.次版本.修订号`（如 V0.2.4）
+- **每次版本发布**：
+  1. 更新 `CHANGELOG.md`
+  2. 提交 + 推送 `main`
+  3. 打 annotated tag（`git tag -a v0.2.4 -m "V0.2.4 …"`）+ 推送 tag
+  4. 创建 GitHub Release（`gh` 已登录时；否则告知 GuGU tag 已推送需补发 Release）
+- **文档语言**：`README.md` 中文，`README_EN.md` 英文。代码注释、提交信息可用中文。
+- **AGENTS.md** 是本文件，Codex 每次对话都会读取。版本更新时同步更新此文件。

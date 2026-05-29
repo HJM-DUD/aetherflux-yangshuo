@@ -220,7 +220,7 @@ def build_advisor_prompt(candidates: list[Mapping[str, Any]]) -> str:
         "For each item include: id, display {title_zh,title_en,summary_zh,summary_en}, "
         "translation_status, advisor_notes {confidence,summary,opportunities,risks,human_questions}, "
         "cross_check {status,supporting_sources,conflicting_sources,needs_more_sources,reasoning}, "
-        "geo_risk {probability,level,reasons}.\n"
+        "geo_risk {probability,level,reasons}, tags [short Chinese topic tags for human review].\n"
         "GEO risk means suspected generative-engine optimization, narrative manipulation, or information pollution; "
         "state probability only, never make accusations.\n"
         "Translate only for display and review. Do not invent sources.\n\n"

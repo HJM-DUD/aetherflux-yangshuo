@@ -48,6 +48,45 @@ class V024AdminApiTests(unittest.TestCase):
         self.assertNotIn("cookie", dumped)
         self.assertNotIn("token", dumped)
 
+    def test_candidate_urls_keep_source_link_but_strip_sensitive_query_tokens(self):
+        self.store.upsert_candidate(
+            {
+                "id": "url-source-candidate",
+                "title": "阳朔小红书来源链接",
+                "summary": "保留来源链接主体，但去掉敏感查询参数",
+                "platform": "xiaohongshu",
+                "source": "小红书 opencli 搜索",
+                "score": 80,
+                "url": "https://www.xiaohongshu.com/search_result/abc123?xsec_token=secret-value&xsec_source=pc_search&note_id=keep-me",
+                "evidence": [
+                    {
+                        "url": "https://www.xiaohongshu.com/search_result/abc123?xsec_token=secret-value&xsec_source=pc_search&note_id=keep-me",
+                        "source": "小红书 opencli 搜索",
+                    }
+                ],
+                "cross_check": {
+                    "status": "unverified",
+                    "supporting_sources": [
+                        "https://www.xiaohongshu.com/search_result/abc123?xsec_token=secret-value&xsec_source=pc_search&note_id=keep-me"
+                    ],
+                    "conflicting_sources": [],
+                    "needs_more_sources": True,
+                    "reasoning": "需要继续补证",
+                },
+            }
+        )
+
+        response = self.client.get("/api/v1/intelligence/candidates")
+
+        self.assertEqual(response.status_code, 200)
+        candidate = response.json()["items"][0]
+        dumped = json.dumps(candidate, ensure_ascii=False)
+        self.assertIn("https://www.xiaohongshu.com/search_result/abc123", candidate["url"])
+        self.assertIn("note_id=keep-me", candidate["url"])
+        self.assertNotIn("xsec_token", dumped)
+        self.assertNotIn("secret-value", dumped)
+        self.assertNotIn("redacted", dumped)
+
     def test_collection_config_reads_defaults_when_file_absent(self):
         """Without config/live_collect.json in temp dir, GET returns filled defaults."""
         response = self.client.get("/api/v1/collection/config")
@@ -195,6 +234,20 @@ class V024AdminApiTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["items"], [])
         self.assertEqual(payload["empty_reason"], "artifact_dir_missing")
+
+    def test_title_pool_returns_latest_file_collection_date(self):
+        artifact_dir = self.root / "artifacts" / "opencli" / "live"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        latest = artifact_dir / "20260530_title_pool.json"
+        latest.write_text(json.dumps([{"title": "阳朔新标题"}], ensure_ascii=False), encoding="utf-8")
+
+        response = self.client.get("/api/v1/title-pool")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["items"][0]["title"], "阳朔新标题")
+        self.assertEqual(payload["file"], str(latest))
+        self.assertIn("collected_at", payload)
 
     def test_video_processing_returns_empty_when_artifact_dir_missing(self):
         response = self.client.get("/api/v1/video-processing")

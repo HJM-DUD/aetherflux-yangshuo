@@ -92,6 +92,7 @@ def _with_defaults(candidate: Dict[str, Any], reason: str) -> Dict[str, Any]:
             "reasons": _fallback_geo_reasons(candidate),
         },
     )
+    candidate.setdefault("tags", _fallback_tags(candidate))
     return candidate
 
 
@@ -106,6 +107,10 @@ def _merge_advisor_item(candidate: Dict[str, Any], advisor_item: Mapping[str, An
             candidate[key] = merged
     if advisor_item.get("translation_status"):
         candidate["translation_status"] = advisor_item["translation_status"]
+    for key in ("tags", "advisor_tags"):
+        value = advisor_item.get(key)
+        if isinstance(value, list):
+            candidate[key] = [str(item).strip() for item in value if str(item).strip()][:8]
     return candidate
 
 
@@ -159,3 +164,14 @@ def _fallback_geo_reasons(candidate: Mapping[str, Any]) -> List[str]:
     if "项目机会" in candidate.get("signals", []):
         reasons.append("内容具有商业转化指向，需要谨慎采信")
     return reasons
+
+
+def _fallback_tags(candidate: Mapping[str, Any]) -> List[str]:
+    tags: List[str] = []
+    for key in ("signals", "category", "platform"):
+        value = candidate.get(key)
+        if isinstance(value, list):
+            tags.extend(str(item).strip() for item in value if str(item).strip())
+        elif value:
+            tags.append(str(value).strip())
+    return list(dict.fromkeys(tags))[:8]

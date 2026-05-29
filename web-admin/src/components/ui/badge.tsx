@@ -1,23 +1,29 @@
-import type { HTMLAttributes } from "react";
+import { AlertTriangle } from "lucide-react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 
 type BadgeProps = HTMLAttributes<HTMLSpanElement> & {
+  icon?: ReactNode;
   tone?: "neutral" | "success" | "warning" | "danger" | "info";
 };
 
-export function Badge({ className, tone = "neutral", ...props }: BadgeProps) {
+export function Badge({ children, className, icon, tone = "neutral", ...props }: BadgeProps) {
   const tones = {
-    neutral: "border-border bg-muted text-muted-foreground",
-    success: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
-    warning: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200",
-    danger: "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200",
-    info: "border-cyan-300 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-200"
+    neutral: "bg-slate-100 text-slate-800 shadow-sm dark:bg-slate-800 dark:text-slate-100",
+    success: "bg-emerald-600 text-white shadow-sm dark:bg-emerald-500 dark:text-white",
+    warning: "bg-white text-red-500 shadow-sm dark:bg-slate-950 dark:text-red-400",
+    danger: "bg-white text-red-500 shadow-sm dark:bg-slate-950 dark:text-red-400",
+    info: "bg-primary text-primary-foreground shadow-sm"
   };
+  const leadingIcon = icon || (tone === "warning" ? <AlertTriangle className="h-3.5 w-3.5" /> : null);
   return (
     <span
-      className={cn("inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold", tones[tone], className)}
+      className={cn("inline-flex min-h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold", tones[tone], className)}
       {...props}
-    />
+    >
+      {leadingIcon}
+      {children}
+    </span>
   );
 }
