@@ -2,9 +2,18 @@
 
 ## 项目内模块架构
 
-阳朔旅游情报中心是“以太通量 / AetherFlux_yitaitongliang”主项目内的子项目。V0.2.0 聚焦本地优先的视频情报收集站：小红书、抖音、视频号的视频、评论、同题讨论信号、官方信源辅助监控和每日资料包。
+阳朔旅游情报中心是“以太通量 / AetherFlux_yitaitongliang”主项目内的子项目。V0.2.4 在 V0.2.3 ASR 优先采集路线之上重建 Web 后台：前端为 React/Vite + Tailwind，后端为 FastAPI，主接口统一为 `/api/v1/*`。
 
-`8765` 保留给 Triagent，AetherFlux Web 默认使用 `8788`，本地 worker/API 预留 `8789`。
+`8765` 保留给 Triagent，AetherFlux Web/FastAPI 默认使用 `8788`，本地 worker/API 预留 `8789`。
+
+## V0.2.4 Web 后台
+
+- 第一屏是“采集作战台”，优先展示平台状态、阶段任务、标题池目标、深处理上限、并发上限和本地日志。
+- FastAPI 负责新版 `/api/v1/*`：dashboard、collection config/jobs、intelligence、official sources、retention、daily bundles、cloud logs、trash、system diagnostics、agent APIs、release status。
+- React 后台采用高信息密度管理台布局，桌面优先，手机可查看状态和执行简单操作。
+- `python3 -m aetherflux.cli serve` 启动 V0.2.4 FastAPI 后台；`legacy-serve` 仅作为旧 V0.1 静态页面备用入口。
+- 后台默认本机免登录，只监听 `127.0.0.1`，不开放公网。
+- 多选删除只进入软删除回收站，14 天内可恢复；14 天后只标记可清理，不执行批量物理删除。
 
 ## 数据流
 
@@ -36,14 +45,13 @@ DeepSeek V4 通过 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL_AD
 
 ## 人工闸门
 
-候选情报默认是 `pending`。只有通过网页或 API 写入 `approved` 的条目，才会进入：
+候选情报默认是 `pending`。只有通过网页或 API 写入 `approved` 的条目，才会进入新版 `/api/v1/intelligence/*` 输出：
 
-- `/api/selected`
-- `/api/daily`
-- `/api/opportunities`
-- `/api/foreign-signals`
-- `/api/risks`
-- `/api/content-briefs`
+- `/api/v1/intelligence/selected`
+- `/api/v1/intelligence/daily`
+- `/api/v1/intelligence/opportunities`
+- `/api/v1/intelligence/foreign-signals`
+- `/api/v1/intelligence/risks`
 
 `rejected` 条目不会进入新的审议草稿。
 

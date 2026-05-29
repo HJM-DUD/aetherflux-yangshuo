@@ -8,6 +8,34 @@
 
 ## [Unreleased]
 
+## [V0.2.4] - 2026-05-29
+
+### 新增 / Added
+
+- 重建 V0.2.4 Web 后台：新增 React/Vite + Tailwind + shadcn 风格组件的专业情报控制台。
+- 新增 FastAPI 后端与统一新版 `/api/v1/*` 接口，覆盖总览、采集配置、采集任务、候选审阅、官方信源、证据保留、每日资料包、云日志、系统诊断、Agent API 和发布状态。
+- 新增后台任务记录模型：平台、阶段、状态、命令、日志路径、开始/结束时间、退出码和错误摘要。
+- 新增本地采集配置存储：关键词、细分赛道、风险词、机会词、freshness、滚动轮数、等待时间、冷却时间和并发上限。
+- 新增软删除回收站：支持多选移入回收站和恢复；14 天后只标记为可清理，不执行批量物理删除。
+- 新增前端测试和构建链路：`npm test`、`npm run build`。
+
+### 变更 / Changed
+
+- `python3 -m aetherflux.cli serve` 默认启动 V0.2.4 FastAPI 后台；旧 V0.1 静态后台改为 `legacy-serve` 备用入口。
+- 项目版本号更新为 `0.2.4`。
+- 正式后台 API 主路径迁移到 `/api/v1/*`，旧 `/api/*` 只作为旧壳兼容参考，不再是主接口。
+- SQLite 连接改为自动关闭的 context manager，减少长期运行后台时的资源泄露风险。
+
+### 修复 / Fixed
+
+- 修复缺少 Playwright 时 live collector 错误提示不包含 Chrome remote debugging 和 `9222` 操作指引的问题。
+
+### 安全 / Security
+
+- V0.2.4 后台默认本机免登录并监听 `127.0.0.1`。
+- API 输出会过滤 `api_key`、cookie、token、password、secret 等敏感字段或敏感文本。
+- 回收站只做软删除，不批量物理删除文件或目录。
+
 ## [V0.2.3] - 2026-05-29
 
 ### 新增 / Added

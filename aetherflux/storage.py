@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional
 
 
 class IntelligenceStore:
@@ -113,6 +115,41 @@ class IntelligenceStore:
                     status TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS admin_collection_config (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    payload_json TEXT NOT NULL,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS admin_jobs (
+                    id TEXT PRIMARY KEY,
+                    platform TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    dry_run INTEGER NOT NULL DEFAULT 0,
+                    command_json TEXT NOT NULL,
+                    log_path TEXT NOT NULL,
+                    started_at TEXT,
+                    ended_at TEXT,
+                    exit_code INTEGER,
+                    error_summary TEXT,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS trash_items (
+                    id TEXT PRIMARY KEY,
+                    item_type TEXT NOT NULL,
+                    reason TEXT,
+                    deleted_at TEXT NOT NULL,
+                    restore_until TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'trashed',
+                    cleanable_after TEXT NOT NULL,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
@@ -409,6 +446,168 @@ class IntelligenceStore:
             syncs.append(payload)
         return syncs
 
+    def get_admin_collection_config(self) -> Dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT payload_json FROM admin_collection_config WHERE id = 1").fetchone()
+        if row:
+            return json.loads(row["payload_json"])
+        return {
+            "platforms": ["xiaohongshu", "douyin"],
+            "manual_queries": ["阳朔 旅游", "阳朔 竹筏", "阳朔 西街"],
+            "segments": ["景区", "民宿", "酒店", "旅游餐饮", "旅拍", "骑行", "亲子", "研学", "疗愈"],
+            "risk_terms": ["避雷", "排队", "投诉", "宰客", "堵车", "价格"],
+            "opportunity_terms": ["攻略", "路线", "新玩法", "小众", "体验", "vlog"],
+            "hermes_queries": [],
+            "title_target_per_platform": 200,
+            "deep_process_limit_per_platform": 40,
+            "freshness_window_hours": 24,
+            "scroll_rounds_per_query": 8,
+            "wait_min_seconds": 25,
+            "wait_max_seconds": 60,
+            "cooldown_minutes_on_limit": 60,
+            "parallel_limit": 2,
+        }
+
+    def set_admin_collection_config(self, config: Mapping[str, Any]) -> Dict[str, Any]:
+        payload = dict(config)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO admin_collection_config (id, payload_json, updated_at)
+                VALUES (1, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    payload_json=excluded.payload_json,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (json.dumps(payload, ensure_ascii=False),),
+            )
+        return payload
+
+    def save_admin_job(self, job: Mapping[str, Any]) -> Dict[str, Any]:
+        payload = dict(job)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO admin_jobs (
+                    id, platform, stage, status, dry_run, command_json, log_path,
+                    started_at, ended_at, exit_code, error_summary, payload_json, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    platform=excluded.platform,
+                    stage=excluded.stage,
+                    status=excluded.status,
+                    dry_run=excluded.dry_run,
+                    command_json=excluded.command_json,
+                    log_path=excluded.log_path,
+                    started_at=excluded.started_at,
+                    ended_at=excluded.ended_at,
+                    exit_code=excluded.exit_code,
+                    error_summary=excluded.error_summary,
+                    payload_json=excluded.payload_json,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    payload["id"],
+                    payload.get("platform", ""),
+                    payload.get("stage", ""),
+                    payload.get("status", "queued"),
+                    1 if payload.get("dry_run") else 0,
+                    json.dumps(payload.get("command", []), ensure_ascii=False),
+                    payload.get("log_path", ""),
+                    payload.get("started_at"),
+                    payload.get("ended_at"),
+                    payload.get("exit_code"),
+                    payload.get("error_summary"),
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+        return payload
+
+    def list_admin_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT payload_json FROM admin_jobs ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [json.loads(row["payload_json"]) for row in rows]
+
+    def get_admin_job(self, job_id: str) -> Dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM admin_jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+        return json.loads(row["payload_json"]) if row else {}
+
+    def move_to_trash(self, item_type: str, ids: Iterable[str], reason: str = "") -> int:
+        now = _utc_now()
+        restore_until = _utc_now(days=14)
+        moved = 0
+        with self._connect() as conn:
+            for item_id in ids:
+                item = self.get_candidate(item_id) if item_type == "candidate" else {"id": item_id}
+                if not item:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO trash_items (
+                        id, item_type, reason, deleted_at, restore_until, cleanable_after,
+                        status, payload_json, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'trashed', ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                        item_type=excluded.item_type,
+                        reason=excluded.reason,
+                        deleted_at=excluded.deleted_at,
+                        restore_until=excluded.restore_until,
+                        cleanable_after=excluded.cleanable_after,
+                        status='trashed',
+                        payload_json=excluded.payload_json,
+                        updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (item_id, item_type, reason, now, restore_until, restore_until, json.dumps(item, ensure_ascii=False)),
+                )
+                moved += 1
+        return moved
+
+    def list_trash(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM trash_items WHERE status IN ('trashed', 'cleanable') ORDER BY deleted_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        items = []
+        for row in rows:
+            payload = dict(row)
+            payload["payload_json"] = json.loads(payload["payload_json"])
+            items.append(payload)
+        return items
+
+    def restore_trash(self, ids: Iterable[str]) -> int:
+        restored = 0
+        with self._connect() as conn:
+            for item_id in ids:
+                cursor = conn.execute(
+                    "UPDATE trash_items SET status = 'restored', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('trashed', 'cleanable')",
+                    (item_id,),
+                )
+                restored += cursor.rowcount
+        return restored
+
+    def mark_trash_cleanable(self) -> int:
+        now = _utc_now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE trash_items
+                SET status = 'cleanable', updated_at = CURRENT_TIMESTAMP
+                WHERE status = 'trashed' AND cleanable_after <= ?
+                """,
+                (now,),
+            )
+        return cursor.rowcount
+
     def _fetch_candidates(self, query: str, params: tuple[Any, ...]) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
@@ -425,7 +624,21 @@ class IntelligenceStore:
             candidates.append(payload)
         return candidates
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _utc_now(days: int = 0) -> str:
+    now = datetime.now(timezone.utc)
+    if days:
+        from datetime import timedelta
+
+        now = now + timedelta(days=days)
+    return now.replace(microsecond=0).isoformat().replace("+00:00", "Z")

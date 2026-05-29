@@ -46,9 +46,17 @@ def main() -> None:
     review.add_argument("--webhook-url", default="")
     review.add_argument("--top-n", type=int, default=20)
 
-    serve = subcommands.add_parser("serve", help="Run local dashboard and API server")
+    serve = subcommands.add_parser(
+        "serve",
+        help="Run V0.2.4 FastAPI admin backend",
+        description="Run V0.2.4 FastAPI admin backend on 127.0.0.1 by default.",
+    )
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=DEFAULT_DASHBOARD_PORT)
+
+    legacy_serve = subcommands.add_parser("legacy-serve", help="Run the deprecated V0.1 static dashboard shell")
+    legacy_serve.add_argument("--host", default="127.0.0.1")
+    legacy_serve.add_argument("--port", type=int, default=DEFAULT_DASHBOARD_PORT)
 
     xhs = subcommands.add_parser("xhs", help="Process Xiaohongshu JSON feed snapshots")
     xhs_subcommands = xhs.add_subparsers(dest="xhs_command", required=True)
@@ -133,6 +141,13 @@ def main() -> None:
     elif args.command == "serve":
         store = IntelligenceStore(args.db)
         store.initialize()
+        import uvicorn
+        from .admin_api import create_app
+
+        uvicorn.run(create_app(store), host=args.host, port=args.port)
+    elif args.command == "legacy-serve":
+        store = IntelligenceStore(args.db)
+        store.initialize()
         run_server(store, args.host, args.port)
     elif args.command == "xhs":
         result = _run_xhs_command(args)
@@ -162,7 +177,6 @@ def main() -> None:
             log_dir=args.log_dir,
             dry_run=args.dry_run,
             sleep_enabled=not args.no_sleep,
-            stage=args.stage,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "opencli-rotate":
@@ -172,6 +186,7 @@ def main() -> None:
             log_dir=args.log_dir,
             dry_run=args.dry_run,
             sleep_enabled=not args.no_sleep,
+            stage=args.stage,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if not result.get("ok", False):

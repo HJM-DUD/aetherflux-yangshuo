@@ -1,10 +1,18 @@
 [project]
 name = "aetherflux-yangshuo"
-version = "0.2.3"
+version = "0.2.4"
 description = "Local-first tourism video intelligence collection, review, dashboard, and agent API."
 requires-python = ">=3.9"
+dependencies = [
+  "fastapi>=0.111,<0.116",
+  "httpx>=0.27,<1.0",
+  "uvicorn[standard]>=0.29,<1.0",
+]
 
 [tool.aetherflux]
 default_host = "127.0.0.1"
 default_port = 8788
 worker_api_port = 8789
+
+[tool.setuptools.packages.find]
+include = ["aetherflux*"]

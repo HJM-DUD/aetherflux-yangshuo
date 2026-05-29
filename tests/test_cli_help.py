@@ -68,6 +68,17 @@ class CLIHelpTests(unittest.TestCase):
         self.assertIn("--dry-run", output)
         self.assertIn("--stage", output)
 
+    def test_serve_help_marks_v024_fastapi_admin_backend(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "aetherflux.cli", "serve", "--help"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        output = " ".join(result.stdout.split())
+        self.assertIn("V0.2.4 FastAPI admin backend", output)
+
 
 if __name__ == "__main__":
     unittest.main()

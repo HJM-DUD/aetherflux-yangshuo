@@ -62,7 +62,11 @@ class PlaywrightCDPSession:
         try:
             from playwright.sync_api import sync_playwright
         except Exception as exc:  # pragma: no cover - environment dependent
-            raise BrowserConnectionError("Playwright is required for live browser collection.") from exc
+            raise BrowserConnectionError(
+                "Cannot connect to Chrome remote debugging because Playwright is not installed. "
+                "Install Playwright, then start Chrome with --remote-debugging-port=9222 and pass "
+                "--cdp-url http://127.0.0.1:9222."
+            ) from exc
 
         self._sync_playwright = sync_playwright
         self._playwright = None

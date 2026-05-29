@@ -2,13 +2,16 @@
 
 "AetherFlux" sub-project: Yangshuo Tourism Intelligence Decision System. For internal content planning, opportunity assessment, risk identification, cross-verification, GEO likelihood evaluation, and as a data backbone for downstream operations agents.
 
-V0.2.3 upgrades the project into an ASR-first video intelligence collector. It builds a recent-24-hour title pool for Xiaohongshu and Douyin, lets Hermes screen opportunity/risk candidates, and then runs local video/audio processing for full-video speech transcription. Raw intelligence, videos, audio, full comments, and full transcripts stay local or on a future NAS. Supabase Cloud is used only for login and lightweight daily log indexes.
+V0.2.4 rebuilds the old V0.1 static dashboard as a React/Vite admin frontend plus a FastAPI backend. The first screen is a collection control console for title pools, screening, ASR processing, task logs, trash recovery, diagnostics, and release checks. Raw intelligence, videos, audio, full comments, and full transcripts stay local or on a future NAS. Supabase Cloud is used only for login and lightweight daily log indexes.
 
 ## Quick Start
 
 ```bash
 python3 -m unittest discover -s tests
 python3 -m compileall aetherflux
+npm install
+npm test
+npm run build
 python3 -m aetherflux.cli ingest
 python3 -m aetherflux.cli review
 python3 -m aetherflux.cli serve --host 127.0.0.1 --port 8788
@@ -96,24 +99,30 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 
 ## API
 
-- `GET /api/candidates` — Candidate pool
-- `GET /api/selected` — Human-confirmed selections
-- `GET /api/daily` — Daily brief structure
-- `GET /api/opportunities` — Project opportunities
-- `GET /api/foreign-signals` — International / foreign-language signals
-- `GET /api/risks` — Risk alerts
-- `GET /api/evidence/:id` — Evidence chain
-- `GET /api/content-briefs` — Content briefs for operations agents
-- `POST /api/decisions` — Human confirm, reject, or adjust weights
-- `POST /api/run-ingest` — Trigger ingestion and basic scoring
-- `POST /api/run-review` — Generate review drafts, optionally with `webhook_url`
-- `GET /api/admin/retention` — Local evidence and cloud log retention settings
-- `POST /api/admin/retention` — Update local evidence hours and cloud log months
-- `GET /api/admin/official-sources` — Official source list
-- `POST /api/admin/official-sources` — Add or update an official source
-- `POST /api/admin/missions` — Update a mission and mark official sources for review when place/industry/segments change
-- `GET /api/daily-bundles` — Daily bundle index
-- `GET /api/cloud-log-syncs` — Supabase lightweight log sync/cleanup records
+V0.2.4 uses `/api/v1/*` as the formal API namespace:
+
+- `GET /api/v1/dashboard/summary`
+- `GET/PUT /api/v1/collection/config`
+- `GET/POST /api/v1/collection/jobs`
+- `GET /api/v1/intelligence/candidates`
+- `POST /api/v1/intelligence/decisions`
+- `GET /api/v1/intelligence/selected`
+- `GET /api/v1/intelligence/daily`
+- `GET /api/v1/intelligence/opportunities`
+- `GET /api/v1/intelligence/foreign-signals`
+- `GET /api/v1/intelligence/risks`
+- `GET/POST /api/v1/admin/official-sources`
+- `GET/POST /api/v1/admin/retention`
+- `GET /api/v1/daily-bundles`
+- `GET /api/v1/cloud-log-syncs`
+- `GET/POST /api/v1/trash`
+- `POST /api/v1/trash/restore`
+- `POST /api/v1/trash/mark-cleanable`
+- `GET /api/v1/system/status`
+- `GET /api/v1/agent/apis`
+- `GET /api/v1/release/status`
+
+The old `/api/*` routes remain only as legacy dashboard references, not the main V0.2.4 interface.
 
 ## Current Boundary
 
@@ -124,3 +133,4 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 - DeepSeek V4 is a pluggable advisor layer; on missing key or API failure the system falls back to rules-based review to keep the daily pipeline running.
 - Bilingual (Chinese/English) output is generated only before human review and final presentation; intermediate processing avoids bilingual expansion to save tokens.
 - The automated pipeline only produces review drafts and never auto-publishes; confirmed items enter the web dashboard and formal API.
+- Multi-select deletion in the admin UI is soft-delete only. Items can be restored within 14 days; the system never batch-deletes files or directories.
