@@ -577,5 +577,11 @@ def _mlx_whisper_cli() -> str:
     executable = shutil.which("mlx_whisper")
     if executable:
         return executable
-    fallback = Path("/Users/gugu/Library/Python/3.9/bin/mlx_whisper")
+    # V0.2.6: removed hardcoded personal path; try common user-site locations
+    import site
+    for base in site.getusersitepackages(), site.getusersitepackages().replace('site-packages', 'bin'):
+        if base:
+            candidate = Path(base).parent / 'bin' / 'mlx_whisper'
+            if candidate.exists():
+                return str(candidate)
     return str(fallback) if fallback.exists() else ""

@@ -16,6 +16,7 @@ from urllib.parse import quote
 from .asr_pipeline import ASRConfig, process_video_item
 from .freshness import evaluate_freshness
 from .live_rotation import build_rotation_plan, load_live_collect_config
+from .paths import opencli_live_log_dir, opencli_live_output_dir, opencli_media_dir
 from .quality import classify_quality
 
 
@@ -195,8 +196,8 @@ def map_opencli_error(message: str) -> str:
 
 def run_opencli_rotation(
     config_path: str | Path = "config/live_collect.json",
-    output_dir: str | Path = "artifacts/opencli/live",
-    log_dir: str | Path = "logs/opencli/live",
+    output_dir: str | Path = str(opencli_live_output_dir()),
+    log_dir: str | Path = str(opencli_live_log_dir()),
     dry_run: bool = False,
     sleep_enabled: bool = True,
     runner: Runner = subprocess.run,
@@ -267,7 +268,7 @@ def run_opencli_rotation(
         screened_file = output_path / f"{run_id}_screened.json"
         screened_file.write_text(json.dumps(screened_items, ensure_ascii=False, indent=2), encoding="utf-8")
     if stage in {"videos", "all"}:
-        media_root = Path("artifacts/media") / run_id[:8]
+        media_root = opencli_media_dir(run_id)
         asr_config = ASRConfig(
             backend=config.asr_backend,
             model=config.asr_model,
@@ -490,7 +491,15 @@ def _screen_with_hermes(items: Sequence[Mapping[str, Any]], per_platform_limit: 
             text=True,
             timeout=300,
         )
-    except Exception:
+    except subprocess.TimeoutExpired:
+        import sys
+        print('[AetherFlux] WARNING: Hermes screen timed out', file=sys.stderr)
+        return []
+    except FileNotFoundError:
+        print('[AetherFlux] WARNING: Hermes CLI not found', file=sys.stderr)
+        return []
+    except Exception as exc:
+        print(f'[AetherFlux] WARNING: Hermes screen failed: {exc}', file=sys.stderr)
         return []
     if result.returncode != 0:
         return []

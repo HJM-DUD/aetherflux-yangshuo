@@ -153,6 +153,8 @@ class IntelligenceStore:
                 );
                 """
             )
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
 
     def upsert_candidate(self, candidate: Mapping[str, Any]) -> None:
         payload = dict(candidate)
@@ -631,6 +633,9 @@ class IntelligenceStore:
         try:
             yield conn
             conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 

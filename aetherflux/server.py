@@ -18,7 +18,8 @@ from .storage import IntelligenceStore
 
 WEB_DIR = Path(__file__).parent / "web"
 DEFAULT_DIRECTIONS = Path("config/directions.json")
-DEFAULT_SEED = Path("data/seed_items.json")
+from .paths import seed_items_path
+DEFAULT_SEED = seed_items_path()
 DEFAULT_DASHBOARD_PORT = 8788
 DEFAULT_WORKER_API_PORT = 8789
 

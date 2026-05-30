@@ -19,7 +19,7 @@ V0.2.5 starts the dual-mode collector rebuild on top of the V0.2.4 Web admin:
 - `aetherflux_shellCLI`: script/OpenCLI-led collection, with an agent supervising, screening, and diagnosing logs.
 - `aetherflux_agentCLI`: agent-led collection, with OpenCLI and scripts as helper tools; real Xiaohongshu/Douyin collection, newest/today filtering, browser-resolved Douyin media download, ASR, and daily bundle output are wired.
 
-Both modes emit the same daily bundle contract and can copy bundles into `data/daily_bundles_inbox/{mode}/{date}/{run_id}/` for the downstream Super Brain stage.
+Both modes emit the same daily bundle contract and can copy bundles into `AETHERFLUX_DATA_ROOT/daily_bundles_inbox/{mode}/{date}/{run_id}/` (default `~/Documents/Agent/AetherFlux_Data/`) for the downstream Super Brain stage.
 
 V0.2.4 rebuilt the old V0.1 static dashboard as a React/Vite admin frontend plus a FastAPI backend. The first screen is a collection control console for title pools, screening, ASR processing, task logs, trash recovery, diagnostics, and release checks. Raw intelligence, videos, audio, full comments, and full transcripts stay local or on a future NAS. Supabase Cloud is used only for login and lightweight daily log indexes.
 
@@ -116,12 +116,12 @@ Run the V0.2.5 collector subprojects:
 ```bash
 cd aetherflux_shellCLI
 python3 -m aetherflux_shellcli.cli run --dry-run
-python3 -m aetherflux_shellcli.cli run --config config/collect.json --main-inbox ../data/daily_bundles_inbox
+python3 -m aetherflux_shellcli.cli run --config config/collect.json --main-inbox "$AETHERFLUX_DATA_ROOT"/daily_bundles_inbox
 
 cd ../aetherflux_agentCLI
 python3 -m aetherflux_agentcli.cli run --dry-run
-python3 -m aetherflux_agentcli.cli run --main-inbox ../data/daily_bundles_inbox
-python3 -m aetherflux_agentcli.cli run --platforms xiaohongshu douyin --queries "阳朔 旅游" --main-inbox ../data/daily_bundles_inbox
+python3 -m aetherflux_agentcli.cli run --main-inbox "$AETHERFLUX_DATA_ROOT"/daily_bundles_inbox
+python3 -m aetherflux_agentcli.cli run --platforms xiaohongshu douyin --queries "阳朔 旅游" --main-inbox "$AETHERFLUX_DATA_ROOT"/daily_bundles_inbox
 ```
 
 Enable the DeepSeek advisor layer via local environment variables (never commit keys to the repo):

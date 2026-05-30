@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--config", default="config/collect.json")
         command.add_argument("--stage", choices=["titles", "screen", "videos", "all"], default="all")
         command.add_argument("--no-sleep", action="store_true")
-        command.add_argument("--bundle-root", default="data/daily_bundles")
+        command.add_argument("--bundle-root", default=str(_DATA_ROOT / "agentCLI" / "daily_bundles"))
         command.add_argument("--main-inbox", default="")
         command.add_argument("--platforms", nargs="*", default=None)
         command.add_argument("--queries", nargs="*", default=None)
@@ -53,6 +53,11 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
         queries_override=queries,
     )
 
+
+
+import os as _os
+from pathlib import Path as _Path
+_DATA_ROOT = _Path(_os.environ.get("AETHERFLUX_DATA_ROOT", "/Users/gugu/Documents/Agent/AetherFlux_Data"))
 
 def main() -> None:
     parser = build_parser()
