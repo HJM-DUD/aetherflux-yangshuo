@@ -21,6 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--no-sleep", action="store_true")
         command.add_argument("--bundle-root", default="data/daily_bundles")
         command.add_argument("--main-inbox", default="")
+        command.add_argument("--platforms", nargs="*", default=None)
+        command.add_argument("--queries", nargs="*", default=None)
     return parser
 
 
@@ -29,10 +31,13 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     config.bundle_root = args.bundle_root
     if args.main_inbox:
         config.main_inbox = args.main_inbox
+    platforms = list(args.platforms) if args.platforms else None
+    queries = list(args.queries) if args.queries else None
     tasks, errors = plan_supported_tasks(config.normalized_platforms(), config.normalized_queries(), per_platform=config.target_per_platform)
     if args.dry_run:
         return {"ok": True, "mode": "shellCLI", "dry_run": True, "tasks": tasks, "errors": errors}
-    return run_shell_collection(config, sleep_enabled=not args.no_sleep, stage=args.stage)
+    return run_shell_collection(config, sleep_enabled=not args.no_sleep, stage=args.stage,
+                                platforms_override=platforms, queries_override=queries)
 
 
 def main() -> None:

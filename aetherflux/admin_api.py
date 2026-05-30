@@ -89,6 +89,7 @@ class CollectionJobRequest(BaseModel):
     action: str = "collect"
     run_mode: str = "manual"
     dry_run: bool = False
+    queries: str = ""  # comma-separated, e.g. "阳朔 旅游,阳朔 竹筏"
 
 
 class DecisionPayload(BaseModel):
@@ -482,6 +483,25 @@ def _save_collection_config(root: Path, data: Dict[str, Any], store: Intelligenc
     config_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     store.set_admin_collection_config(merged)
 
+    # Sync platforms + queries only to shellCLI's collect.json (E4 fix)
+    _sync_collect_json(root, merged)
+
+
+def _sync_collect_json(root: Path, merged: Dict[str, Any]) -> None:
+    """Sync only platforms and queries to shellCLI config/collect.json, preserving other fields."""
+    collect_path = root / "aetherflux_shellCLI" / "config" / "collect.json"
+    collect_path.parent.mkdir(parents=True, exist_ok=True)
+    shell_config: Dict[str, Any] = {}
+    if collect_path.exists():
+        try:
+            shell_config = json.loads(collect_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    # Only overwrite platforms + queries; rest stays as-is
+    shell_config["platforms"] = list(merged.get("platforms", ["xiaohongshu", "douyin"]))
+    shell_config["queries"] = list(merged.get("manual_queries", merged.get("queries", ["阳朔 旅游"])))
+    collect_path.write_text(json.dumps(shell_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
 
 def _load_latest_artifact(artifact_dir: Path, *globs: str) -> Dict[str, Any]:
     """Find the latest JSON file matching any glob pattern, return its contents as items."""
@@ -535,28 +555,43 @@ def _build_collection_command(payload: CollectionJobRequest, root: Path) -> tupl
     mode = payload.mode
     action = payload.action
     inbox = root / "data" / "daily_bundles_inbox"
+
+    # Parse platform overrides: comma-separated → list, "all" → empty
+    platform_raw = (payload.platform or "").strip()
+    platform_list: List[str] = []
+    if platform_raw and platform_raw != "all":
+        platform_list = [p.strip() for p in platform_raw.split(",") if p.strip()]
+
+    # Parse query overrides: comma-separated → list
+    query_raw = (payload.queries or "").strip()
+    query_list: List[str] = []
+    if query_raw:
+        query_list = [q.strip() for q in query_raw.split(",") if q.strip()]
+
     if mode == "shellCLI":
         subproject = root / "aetherflux_shellCLI"
         if action == "auto_pipeline":
             return (_auto_pipeline_command("aetherflux_shellcli", "shellCLI", inbox), subproject)
         if action == "collect":
-            return (
-                [
-                    sys.executable,
-                    "-m",
-                    "aetherflux_shellcli.cli",
-                    "backend-hook",
-                    "--config",
-                    "config/collect.json",
-                    "--stage",
-                    "all",
-                    "--bundle-root",
-                    "data/daily_bundles",
-                    "--main-inbox",
-                    str(inbox),
-                ],
-                subproject,
-            )
+            cmd = [
+                sys.executable,
+                "-m",
+                "aetherflux_shellcli.cli",
+                "backend-hook",
+                "--config",
+                "config/collect.json",
+                "--stage",
+                "all",
+                "--bundle-root",
+                "data/daily_bundles",
+                "--main-inbox",
+                str(inbox),
+            ]
+            if platform_list:
+                cmd.extend(["--platforms"] + platform_list)
+            if query_list:
+                cmd.extend(["--queries"] + query_list)
+            return (cmd, subproject)
         if action == "package":
             return (_bundle_command("aetherflux_shellcli", "shellCLI", inbox), subproject)
         if action == "clean":
@@ -569,19 +604,21 @@ def _build_collection_command(payload: CollectionJobRequest, root: Path) -> tupl
         if action == "auto_pipeline":
             return (_auto_pipeline_command("aetherflux_agentcli", "agentCLI", inbox), subproject)
         if action == "collect":
-            return (
-                [
-                    sys.executable,
-                    "-m",
-                    "aetherflux_agentcli.cli",
-                    "backend-hook",
-                    "--bundle-root",
-                    "data/daily_bundles",
-                    "--main-inbox",
-                    str(inbox),
-                ],
-                subproject,
-            )
+            cmd = [
+                sys.executable,
+                "-m",
+                "aetherflux_agentcli.cli",
+                "backend-hook",
+                "--bundle-root",
+                "data/daily_bundles",
+                "--main-inbox",
+                str(inbox),
+            ]
+            if platform_list:
+                cmd.extend(["--platforms"] + platform_list)
+            if query_list:
+                cmd.extend(["--queries"] + query_list)
+            return (cmd, subproject)
         if action == "package":
             return (_bundle_command("aetherflux_agentcli", "agentCLI", inbox), subproject)
         if action == "clean":
@@ -615,7 +652,41 @@ def _safe_clean_command(mode: str, subproject: Path) -> List[str]:
 
 
 def _bundle_command(package_name: str, mode: str, inbox: Path) -> List[str]:
-    return [sys.executable, "-c", _bundle_script_body(package_name, mode, inbox)]
+    return [sys.executable, "-c", _copy_latest_bundle_script(mode, inbox)]
+
+
+def _copy_latest_bundle_script(mode: str, inbox: Path) -> str:
+    return (
+        "from pathlib import Path\n"
+        "import json, shutil\n"
+        "bundles_root = Path('data/daily_bundles')\n"
+        "if not bundles_root.exists():\n"
+        "    print('无资料包目录，跳过打包。')\n"
+        "    exit(0)\n"
+        "candidates = sorted(bundles_root.glob('daily_bundle_*'), reverse=True)\n"
+        "if not candidates:\n"
+        "    print('未找到已有资料包，跳过打包。')\n"
+        "    exit(0)\n"
+        "latest = candidates[0]\n"
+        "manifest_path = latest / 'manifest.json'\n"
+        "if not manifest_path.exists():\n"
+        "    print(f'资料包 {latest.name} 缺少 manifest，跳过。')\n"
+        "    exit(0)\n"
+        "manifest = json.loads(manifest_path.read_text(encoding='utf-8'))\n"
+        "counts = manifest.get('counts', {})\n"
+        "total = counts.get('raw_items', 0)\n"
+        "if total == 0:\n"
+        "    print(f'最近资料包 {latest.name} 无采集数据（raw_items=0），跳过打包以避免生成空包。')\n"
+        "    exit(0)\n"
+        f"target = Path({str(inbox)!r}) / {mode!r} / manifest.get('bundle_date', 'unknown') / manifest.get('run_id', 'unknown')\n"
+        "if target.exists():\n"
+        "    print(f'目标路径已存在：{target}')\n"
+        "    exit(0)\n"
+        "target.parent.mkdir(parents=True, exist_ok=True)\n"
+        "shutil.copytree(latest, target)\n"
+        "print(f'已打包最近资料包：{latest.name} -> {target}')\n"
+        "print(f'采集条数：raw_items={total}')\n"
+    )
 
 
 def _auto_pipeline_command(package_name: str, mode: str, inbox: Path) -> List[str]:
@@ -656,29 +727,14 @@ def _auto_pipeline_command(package_name: str, mode: str, inbox: Path) -> List[st
         "files = [p for target in targets if target.exists() for p in target.rglob('*') if p.is_file()]\n"
         "size = sum(p.stat().st_size for p in files)\n"
         "print(f'清理扫描完成：文件数={len(files)}；占用={size} bytes；物理删除=否')\n"
-        "print('第三步：生成当日资料包')\n"
-        + _bundle_script_body(package_name, mode, inbox)
+        "print('第三步：复制最近采集资料包到智脑入口')\n"
+        + _copy_latest_bundle_script(mode, inbox)
     )
     return [sys.executable, "-c", script]
 
 
-def _bundle_script_body(package_name: str, mode: str, inbox: Path) -> str:
-    return (
-        "from datetime import datetime, timezone\n"
-        "import uuid\n"
-        f"from {package_name}.bundle import BundleWriter, copy_bundle_to_inbox\n"
-        "bundle_date = datetime.now(timezone.utc).date().isoformat()\n"
-        "run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:6]\n"
-        f"bundle = BundleWriter('data/daily_bundles', mode={mode!r}, node_id='local-admin').create_bundle(\n"
-        "    bundle_date=bundle_date,\n"
-        "    run_id=run_id,\n"
-        "    mission={'place': '阳朔', 'industry': '旅游', 'source': 'web-admin-package'},\n"
-        "    raw_items=[], screened_items=[], asr_results=[], agent_decisions=[], errors=[])\n"
-        f"copied = copy_bundle_to_inbox(bundle.path, {str(inbox)!r})\n"
-        "print(f'资料包已生成：{bundle.path}')\n"
-        "print(f'已复制到智脑入口：{copied}')\n"
-    )
-
+# _bundle_script_body removed in V0.2.5 Fix 2
+# Old _bundle_script_body removed — replaced by _copy_latest_bundle_script
 
 def _run_job_sync(job: Dict[str, Any], store: IntelligenceStore) -> None:
     latest = store.get_admin_job(str(job["id"]))

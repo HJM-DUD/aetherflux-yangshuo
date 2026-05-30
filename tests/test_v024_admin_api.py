@@ -232,9 +232,9 @@ class V024AdminApiTests(unittest.TestCase):
         self.assertIn("aetherflux_shellcli.cli", " ".join(shell_job["command"]))
         self.assertEqual(agent_job["mode"], "agentCLI")
         self.assertEqual(agent_job["action"], "package")
-        self.assertIn("aetherflux_agentcli.bundle", " ".join(agent_job["command"]))
+        self.assertIn("已打包最近资料包", " ".join(agent_job["command"]))
         self.assertIn("第一步：启动采集任务", " ".join(auto_job["command"]))
-        self.assertIn("第三步：生成当日资料包", " ".join(auto_job["command"]))
+        self.assertIn("第三步：复制最近采集资料包到智脑入口", " ".join(auto_job["command"]))
         self.assertFalse(shell_job.get("physical_delete_performed", False))
 
     def test_collection_job_detail_and_log_endpoints(self):

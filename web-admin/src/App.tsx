@@ -507,6 +507,11 @@ export default function App() {
       showToast("配置页还没有启用平台，请先到采集配置添加平台。");
       return;
     }
+    const queries = (config.manual_queries || []).filter(Boolean);
+    if (!queries.length) {
+      showToast("配置页还没有配置采集关键词，请先前往配置。");
+      return;
+    }
     const actionName = collectionActionLabels[action];
     const ok = window.confirm(`确认执行 ${formatCollectionMode(mode)} 的“${actionName}”吗？\n平台：${platforms.map(formatPlatform).join("、")}\n后台会保留任务包、退出码和日志。`);
     if (!ok) return;
@@ -520,7 +525,8 @@ export default function App() {
         mode,
         action,
         run_mode: collectionRunMode,
-        dry_run: false
+        dry_run: false,
+        queries: config.manual_queries.join(",")
       })
     });
     if (!response.ok) {

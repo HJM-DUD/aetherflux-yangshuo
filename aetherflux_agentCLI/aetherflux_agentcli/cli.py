@@ -18,6 +18,8 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--dry-run", action="store_true")
         command.add_argument("--bundle-root", default="data/daily_bundles")
         command.add_argument("--main-inbox", default="")
+        command.add_argument("--platforms", nargs="*", default=None)  # TODO: wire to run() when agentCLI collection logic is implemented
+        command.add_argument("--queries", nargs="*", default=None)  # TODO: wire to run() when agentCLI collection logic is implemented
     return parser
 
 

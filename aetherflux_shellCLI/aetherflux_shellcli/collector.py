@@ -131,6 +131,8 @@ def run_shell_collection(
     runner: Runner = subprocess.run,
     sleep_enabled: bool = True,
     stage: str = "all",
+    platforms_override: List[str] | None = None,
+    queries_override: List[str] | None = None,
 ) -> Dict[str, Any]:
     doctor = runner(["opencli", "doctor"], check=False, capture_output=True, text=True, timeout=60)
     doctor_output = f"{doctor.stdout or ''}\n{doctor.stderr or ''}".strip()
@@ -139,9 +141,11 @@ def run_shell_collection(
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     bundle_date = datetime.now(timezone.utc).date().isoformat()
+    effective_platforms = platforms_override if (platforms_override and len(platforms_override) > 0) else config.normalized_platforms()
+    effective_queries = queries_override if (queries_override and len(queries_override) > 0) else config.normalized_queries()
     tasks, placeholder_errors = plan_supported_tasks(
-        config.normalized_platforms(),
-        config.normalized_queries(),
+        effective_platforms,
+        effective_queries,
         per_platform=config.target_per_platform,
     )
     artifact_root = Path(config.artifact_root)
@@ -163,8 +167,10 @@ def run_shell_collection(
             freshness_window_hours=config.freshness_window_hours,
             scroll_rounds=config.scroll_rounds_per_query,
         )
-        result = _run_sequence(commands, runner)
-        _close_browser_session(platform, runner)
+        try:
+            result = _run_sequence(commands, runner)
+        finally:
+            _close_browser_session(platform, runner)
         task_prefix = f"{run_id}_{platform}_{int(task['task_index']):04d}"
         (log_root / f"{task_prefix}.log").write_text((result["stdout"] + "\n" + result["stderr"]).strip(), encoding="utf-8")
         if not result["ok"]:
@@ -208,7 +214,12 @@ def _run_sequence(commands: Sequence[Sequence[str]], runner: Runner) -> Dict[str
     stderr_parts: List[str] = []
     last_stdout = ""
     for command in commands:
-        result = runner(list(command), check=False, capture_output=True, text=True, timeout=180)
+        try:
+            result = runner(list(command), check=False, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "stdout": "\n".join(stdout_parts), "stderr": "\n".join(stderr_parts), "error": "timeout"}
+        except FileNotFoundError:
+            return {"ok": False, "stdout": "\n".join(stdout_parts), "stderr": "\n".join(stderr_parts), "error": "not_found"}
         stdout_parts.append(result.stdout or "")
         stderr_parts.append(result.stderr or "")
         last_stdout = result.stdout or ""
