@@ -10,10 +10,6 @@ dist/
 .env
 .env.*
 !.env.example
-data/*.db
-data/*.db-*
-data/daily_bundles_inbox/
-aetherflux_shellCLI/data/daily_bundles/
-aetherflux_agentCLI/data/daily_bundles/
 logs/
 artifacts/
+# Data now lives under AETHERFLUX_DATA_ROOT (default: ~/Documents/Agent/AetherFlux_Data)

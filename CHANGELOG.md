@@ -8,6 +8,25 @@
 
 ## [Unreleased]
 
+## [V0.2.6] - 2026-05-30
+
+### 变更 / Changed
+
+- **数据存储外迁**：所有运行时数据（数据库、日志、采集产物、每日资料包）从项目内相对路径迁移到统一外部目录 `AETHERFLUX_DATA_ROOT`（默认 `/Users/gugu/Documents/Agent/AetherFlux_Data`）。
+- 新增 `aetherflux/paths.py` 统一路径解析模块，所有模块通过环境变量 `AETHERFLUX_DATA_ROOT` 读取数据根目录。
+- 子项目 `aetherflux_agentCLI` 和 `aetherflux_shellCLI` 各自通过本地 `_DATA_ROOT` 常量解析路径，不引入跨包依赖。
+- Web 后台 `/api/v1/*` 采集命令构建器中的资料包根路径、inbox 路径和清理扫描路径已同步更新。
+- `.gitignore` 移除本地 `data/` 相关忽略规则（数据不再存于仓库内）。
+- 更新 `scripts/daily_review.sh` 数据库默认路径。
+
+### 修复 / Fixed
+
+- 修复 `live_rotation.py` 和 `opencli_collectors.py` 中缺失的 `paths` 模块导入。
+
+### 安全 / Security
+
+- 原始情报、评论、转写、数据库等敏感数据不再出现在 Git 仓库工作树中，降低误提交风险。
+
 ## [V0.2.5] - 2026-05-30
 
 ### 新增 / Added

@@ -6,10 +6,10 @@
   "freshness_window_hours": 24,
   "scroll_rounds_per_query": 4,
   "wait_seconds": 20,
-  "bundle_root": "data/daily_bundles",
+  "bundle_root": "/Users/gugu/Documents/Agent/AetherFlux_Data/shellCLI/daily_bundles",
   "artifact_root": "artifacts/opencli/live",
   "log_root": "logs/opencli/live",
-  "main_inbox": "../data/daily_bundles_inbox",
+  "main_inbox": "/Users/gugu/Documents/Agent/AetherFlux_Data/daily_bundles_inbox",
   "node_id": "mac-local",
   "place": "阳朔",
   "industry": "旅游"

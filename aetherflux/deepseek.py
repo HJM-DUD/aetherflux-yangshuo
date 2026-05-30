@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping
 
-STATUS_PATH = Path("artifacts/deepseek_status.json")
+from .paths import deepseek_status_path
+
+STATUS_PATH = deepseek_status_path()
 
 
 class DeepSeekAdvisorError(RuntimeError):
@@ -101,6 +103,10 @@ class DeepSeekClient:
                 parsed = parse_json_content(content)
             except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
                 last_error = str(exc)
+                import time as _time
+                backoff = min(2 ** (attempt - 1), 8)
+                if attempt < self.config.max_attempts:
+                    _time.sleep(backoff)
                 record_deepseek_status(
                     {
                         "state": "error",

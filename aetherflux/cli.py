@@ -13,18 +13,31 @@ from .live_rotation import DEFAULT_CONFIG as DEFAULT_LIVE_CONFIG
 from .live_rotation import run_rotation_collection
 from .opencli_collectors import run_opencli_rotation
 from .pipeline import run_ingest, run_review
+from .paths import (
+    artifacts_dir,
+    db_path,
+    live_rotate_log_dir,
+    live_rotate_output_dir,
+    logs_dir,
+    opencli_live_log_dir,
+    opencli_live_output_dir,
+    seed_items_path,
+    xhs_output_path,
+    xhs_source_path,
+    xhs_state_path,
+)
 from .server import run_server
 from .storage import IntelligenceStore
 from .xhs import JSONFeedXHSDriver, collect_xhs, parse_now
 
 
-DEFAULT_DB = Path("data/aetherflux.db")
+DEFAULT_DB = db_path()
 DEFAULT_DIRECTIONS = Path("config/directions.json")
-DEFAULT_SEED = Path("data/seed_items.json")
-DEFAULT_XHS_SOURCE = Path("data/xhs_source_items.json")
-DEFAULT_XHS_OUTPUT = Path("artifacts/xhs_raw_items.json")
-DEFAULT_XHS_STATE = Path("artifacts/xhs_collect_state.json")
-DEFAULT_LIVE_OUTPUT = Path("artifacts/live_raw_items.json")
+DEFAULT_SEED = seed_items_path()
+DEFAULT_XHS_SOURCE = xhs_source_path()
+DEFAULT_XHS_OUTPUT = xhs_output_path()
+DEFAULT_XHS_STATE = xhs_state_path()
+DEFAULT_LIVE_OUTPUT = artifacts_dir() / "live_raw_items.json"
 DEFAULT_DASHBOARD_PORT = 8788
 DEFAULT_WORKER_API_PORT = 8789
 
@@ -102,8 +115,8 @@ def main() -> None:
     )
     live_rotate.add_argument("--config", default=str(DEFAULT_LIVE_CONFIG))
     live_rotate.add_argument("--cdp-url", default="http://127.0.0.1:9222")
-    live_rotate.add_argument("--output-dir", default="artifacts/live")
-    live_rotate.add_argument("--log-dir", default="logs/live")
+    live_rotate.add_argument("--output-dir", default=str(live_rotate_output_dir()))
+    live_rotate.add_argument("--log-dir", default=str(live_rotate_log_dir()))
     live_rotate.add_argument("--dry-run", action="store_true")
     live_rotate.add_argument("--no-sleep", action="store_true", help="Disable real waits; intended for tests and diagnostics")
 
@@ -116,8 +129,8 @@ def main() -> None:
         ),
     )
     opencli_rotate.add_argument("--config", default=str(DEFAULT_LIVE_CONFIG))
-    opencli_rotate.add_argument("--output-dir", default="artifacts/opencli/live")
-    opencli_rotate.add_argument("--log-dir", default="logs/opencli/live")
+    opencli_rotate.add_argument("--output-dir", default=str(opencli_live_output_dir()))
+    opencli_rotate.add_argument("--log-dir", default=str(opencli_live_log_dir()))
     opencli_rotate.add_argument("--stage", choices=["titles", "screen", "videos", "all"], default="all")
     opencli_rotate.add_argument("--dry-run", action="store_true")
     opencli_rotate.add_argument("--no-sleep", action="store_true", help="Disable real waits; intended for tests and diagnostics")

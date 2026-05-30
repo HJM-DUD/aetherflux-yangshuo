@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Mapping
 
 from .live_collectors import BrowserConnectionError, collect_live_platform
 from .query_planner import build_hybrid_queries
+from .paths import live_rotate_log_dir, live_rotate_output_dir
 from .quality import classify_quality
 
 
@@ -131,8 +132,8 @@ def hermes_decision(health: Mapping[str, PlatformHealth]) -> Dict[str, Any]:
 def run_rotation_collection(
     config_path: str | Path = DEFAULT_CONFIG,
     cdp_url: str = "http://127.0.0.1:9222",
-    output_dir: str | Path = "artifacts/live",
-    log_dir: str | Path = "logs/live",
+    output_dir: str | Path = str(live_rotate_output_dir()),
+    log_dir: str | Path = str(live_rotate_log_dir()),
     dry_run: bool = False,
     sleep_enabled: bool = True,
 ) -> Dict[str, Any]:

@@ -21,6 +21,11 @@ DOUYIN_BROWSER_SESSION = "aetherflux-shellcli-douyin"
 XIAOHONGSHU_BROWSER_SESSION = "aetherflux-shellcli-xiaohongshu"
 
 
+
+import os as _os
+from pathlib import Path as _Path
+_DATA_ROOT = _Path(_os.environ.get("AETHERFLUX_DATA_ROOT", "/Users/gugu/Documents/Agent/AetherFlux_Data"))
+
 @dataclass
 class ShellCollectionConfig:
     platforms: List[str] | None = None
@@ -30,9 +35,9 @@ class ShellCollectionConfig:
     freshness_window_hours: int = 24
     scroll_rounds_per_query: int = 4
     wait_seconds: int = 2
-    bundle_root: str | Path = "data/daily_bundles"
-    artifact_root: str | Path = "artifacts/opencli/live"
-    log_root: str | Path = "logs/opencli/live"
+    bundle_root: str | Path = str(_DATA_ROOT / "shellCLI" / "daily_bundles")
+    artifact_root: str | Path = str(_DATA_ROOT / "artifacts" / "opencli" / "live")
+    log_root: str | Path = str(_DATA_ROOT / "logs" / "opencli" / "live")
     main_inbox: str | Path = ""
     node_id: str = "local"
     place: str = "阳朔"
@@ -58,9 +63,9 @@ def load_config(path: str | Path) -> ShellCollectionConfig:
         freshness_window_hours=int(raw.get("freshness_window_hours", 24)),
         scroll_rounds_per_query=int(raw.get("scroll_rounds_per_query", 4)),
         wait_seconds=int(raw.get("wait_seconds", raw.get("wait_min_seconds", 2))),
-        bundle_root=raw.get("bundle_root", "data/daily_bundles"),
-        artifact_root=raw.get("artifact_root", "artifacts/opencli/live"),
-        log_root=raw.get("log_root", "logs/opencli/live"),
+        bundle_root=raw.get("bundle_root", str(_DATA_ROOT / "shellCLI" / "daily_bundles")),
+        artifact_root=raw.get("artifact_root", str(_DATA_ROOT / "artifacts" / "opencli" / "live")),
+        log_root=raw.get("log_root", str(_DATA_ROOT / "logs" / "opencli" / "live")),
         main_inbox=raw.get("main_inbox", ""),
         node_id=raw.get("node_id", "local"),
         place=raw.get("place", "阳朔"),

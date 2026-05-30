@@ -24,6 +24,11 @@ from pydantic import BaseModel, Field
 
 from .api import build_public_payloads
 from .server import build_system_status, run_deepseek_smoke_test
+from .paths import (
+    agentcli_bundle_root,
+    daily_bundles_inbox_dir,
+    shellcli_bundle_root,
+)
 from .storage import IntelligenceStore
 
 DEFAULT_COLLECT_CONFIG = {
@@ -517,8 +522,9 @@ def _load_collection_config(root: Path, store: IntelligenceStore) -> Dict[str, A
     # Also sync to SQLite cache
     try:
         store.set_admin_collection_config(config)
-    except Exception:
-        pass
+    except Exception as exc:
+        import sys
+        print(f"[AetherFlux] WARNING: config cache sync failed: {exc}", file=sys.stderr)
     return config
 
 
@@ -556,6 +562,19 @@ def _sync_collect_json(root: Path, merged: Dict[str, Any]) -> None:
     shell_config["platforms"] = list(merged.get("platforms", ["xiaohongshu", "douyin"]))
     shell_config["queries"] = list(merged.get("manual_queries", merged.get("queries", ["阳朔 旅游"])))
     collect_path.write_text(json.dumps(shell_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    # Also sync agentCLI config (V0.2.6 fix: P1 config chain)
+    agent_path = root / "aetherflux_agentCLI" / "config" / "collect.json"
+    agent_path.parent.mkdir(parents=True, exist_ok=True)
+    agent_config: Dict[str, Any] = {}
+    if agent_path.exists():
+        try:
+            agent_config = json.loads(agent_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    agent_config["platforms"] = list(merged.get("platforms", ["xiaohongshu", "douyin"]))
+    agent_config["queries"] = list(merged.get("manual_queries", merged.get("queries", ["阳朔 旅游"])))
+    agent_path.write_text(json.dumps(agent_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _load_latest_artifact(artifact_dir: Path, *globs: str) -> Dict[str, Any]:
@@ -609,7 +628,7 @@ def _build_job(payload: CollectionJobRequest, root: Path) -> Dict[str, Any]:
 def _build_collection_command(payload: CollectionJobRequest, root: Path) -> tuple[List[str], Path]:
     mode = payload.mode
     action = payload.action
-    inbox = root / "data" / "daily_bundles_inbox"
+    inbox = daily_bundles_inbox_dir()
 
     # Parse platform overrides: comma-separated → list, "all" → empty
     platform_raw = (payload.platform or "").strip()
@@ -638,7 +657,7 @@ def _build_collection_command(payload: CollectionJobRequest, root: Path) -> tupl
                 "--stage",
                 "all",
                 "--bundle-root",
-                "data/daily_bundles",
+                str(shellcli_bundle_root()),
                 "--main-inbox",
                 str(inbox),
             ]
@@ -665,7 +684,7 @@ def _build_collection_command(payload: CollectionJobRequest, root: Path) -> tupl
                 "aetherflux_agentcli.cli",
                 "backend-hook",
                 "--bundle-root",
-                "data/daily_bundles",
+                str(agentcli_bundle_root()),
                 "--main-inbox",
                 str(inbox),
             ]
@@ -694,9 +713,11 @@ def _manual_web_command(mode: str, subproject: Path) -> List[str]:
 
 def _safe_clean_command(mode: str, subproject: Path) -> List[str]:
     script = (
-        "from pathlib import Path\n"
+        "import os\n" "from pathlib import Path\n"
         "root = Path.cwd()\n"
-        "targets = [root / 'data', root / 'artifacts', root / 'logs']\n"
+        "import os\n"
+        "data_root = os.environ.get('AETHERFLUX_DATA_ROOT', '/Users/gugu/Documents/Agent/AetherFlux_Data')\n"
+        "targets = [Path(data_root)]\n"
         "files = [p for target in targets if target.exists() for p in target.rglob('*') if p.is_file()]\n"
         "size = sum(p.stat().st_size for p in files)\n"
         f"print('清理扫描完成：{mode}；未执行物理删除。')\n"
@@ -714,7 +735,8 @@ def _copy_latest_bundle_script(mode: str, inbox: Path) -> str:
     return (
         "from pathlib import Path\n"
         "import json, shutil\n"
-        "bundles_root = Path('data/daily_bundles')\n"
+        "data_root = os.environ.get('AETHERFLUX_DATA_ROOT', '/Users/gugu/Documents/Agent/AetherFlux_Data')\n"
+        "bundles_root = Path(data_root) / mode / 'daily_bundles'\n"
         "if not bundles_root.exists():\n"
         "    print('无资料包目录，跳过打包。')\n"
         "    exit(0)\n"
@@ -756,7 +778,7 @@ def _auto_pipeline_command(package_name: str, mode: str, inbox: Path) -> List[st
             "--stage",
             "all",
             "--bundle-root",
-            "data/daily_bundles",
+            str(shellcli_bundle_root()),
             "--main-inbox",
             str(inbox),
         ]
@@ -767,7 +789,7 @@ def _auto_pipeline_command(package_name: str, mode: str, inbox: Path) -> List[st
             "aetherflux_agentcli.cli",
             "backend-hook",
             "--bundle-root",
-            "data/daily_bundles",
+            str(agentcli_bundle_root()),
             "--main-inbox",
             str(inbox),
         ]
@@ -778,7 +800,9 @@ def _auto_pipeline_command(package_name: str, mode: str, inbox: Path) -> List[st
         f"subprocess.run({collect_args!r}, check=True)\n"
         "print('第二步：清理扫描开始（不执行物理删除）')\n"
         "root = Path.cwd()\n"
-        "targets = [root / 'data', root / 'artifacts', root / 'logs']\n"
+        "import os\n"
+        "data_root = os.environ.get('AETHERFLUX_DATA_ROOT', '/Users/gugu/Documents/Agent/AetherFlux_Data')\n"
+        "targets = [Path(data_root)]\n"
         "files = [p for target in targets if target.exists() for p in target.rglob('*') if p.is_file()]\n"
         "size = sum(p.stat().st_size for p in files)\n"
         "print(f'清理扫描完成：文件数={len(files)}；占用={size} bytes；物理删除=否')\n"
@@ -867,6 +891,19 @@ def _safe_payload(value: Any) -> Any:
     if isinstance(value, str) and any(secret in value.lower() for secret in ("api_key", "cookie", "token", "password", "secret")):
         return _safe_string(value)
     return value
+
+
+# Patterns that look like API keys/tokens in values
+_SENSITIVE_VALUE_PATTERNS = [
+    "sk-[a-zA-Z0-9]{20,}",
+    "sk-ant-[a-zA-Z0-9_-]+",
+    "Bearer [a-zA-Z0-9._-]{20,}",
+    "dsk-[a-zA-Z0-9]{20,}",
+]
+
+def _looks_like_token(value: str) -> bool:
+    import re as _re
+    return any(_re.search(p, value) for p in _SENSITIVE_VALUE_PATTERNS)
 
 
 def _safe_string(value: str) -> str:

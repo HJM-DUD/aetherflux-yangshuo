@@ -23,6 +23,11 @@ DOUYIN_BROWSER_SESSION = "aetherflux-agentcli-douyin"
 XIAOHONGSHU_BROWSER_SESSION = "aetherflux-agentcli-xiaohongshu"
 
 
+
+import os as _os
+from pathlib import Path as _Path
+_DATA_ROOT = _Path(_os.environ.get("AETHERFLUX_DATA_ROOT", "/Users/gugu/Documents/Agent/AetherFlux_Data"))
+
 @dataclass
 class AgentCollectionConfig:
     platforms: List[str] | None = None
@@ -32,12 +37,12 @@ class AgentCollectionConfig:
     freshness_window_hours: int = 24
     scroll_rounds_per_query: int = 4
     wait_seconds: int = 2
-    bundle_root: str | Path = "data/daily_bundles"
-    artifact_root: str | Path = "artifacts/opencli/agent"
-    log_root: str | Path = "logs/opencli/agent"
+    bundle_root: str | Path = str(_DATA_ROOT / "agentCLI" / "daily_bundles")
+    artifact_root: str | Path = str(_DATA_ROOT / "artifacts" / "opencli" / "agent")
+    log_root: str | Path = str(_DATA_ROOT / "logs" / "opencli" / "agent")
     main_inbox: str | Path = ""
     agent_config: str | Path = "config/agents.json"
-    media_root: str | Path = "artifacts/media/agent"
+    media_root: str | Path = str(_DATA_ROOT / "artifacts" / "media" / "agent")
     asr_backend: str = "auto"
     asr_model: str = "small"
     asr_language: str = "zh"
@@ -66,12 +71,12 @@ def load_config(path: str | Path) -> AgentCollectionConfig:
         freshness_window_hours=int(raw.get("freshness_window_hours", 24)),
         scroll_rounds_per_query=int(raw.get("scroll_rounds_per_query", 4)),
         wait_seconds=int(raw.get("wait_seconds", raw.get("wait_min_seconds", 2))),
-        bundle_root=raw.get("bundle_root", "data/daily_bundles"),
-        artifact_root=raw.get("artifact_root", "artifacts/opencli/agent"),
-        log_root=raw.get("log_root", "logs/opencli/agent"),
+        bundle_root=raw.get("bundle_root", str(_DATA_ROOT / "agentCLI" / "daily_bundles")),
+        artifact_root=raw.get("artifact_root", str(_DATA_ROOT / "artifacts" / "opencli" / "agent")),
+        log_root=raw.get("log_root", str(_DATA_ROOT / "logs" / "opencli" / "agent")),
         main_inbox=raw.get("main_inbox", ""),
         agent_config=raw.get("agent_config", "config/agents.json"),
-        media_root=raw.get("media_root", "artifacts/media/agent"),
+        media_root=raw.get("media_root", str(_DATA_ROOT / "artifacts" / "media" / "agent")),
         asr_backend=raw.get("asr_backend", "auto"),
         asr_model=raw.get("asr_model", "small"),
         asr_language=raw.get("asr_language", "zh"),
