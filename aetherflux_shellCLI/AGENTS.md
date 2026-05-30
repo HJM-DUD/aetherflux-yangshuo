@@ -23,6 +23,13 @@ GuGU 对编程只是略懂皮毛，回复要尽量中文、直接、少术语。
 - 视频号在 V0.2.5 默认禁用，不允许制造假成功。
 - 真实采集前必须经过 `opencli doctor`；如果 OpenCLI Browser Bridge 没通，停止，不写假成功资料包。
 
+## 最新修复（V0.2.5 三方审查，2026-05-30）
+
+- `_run_sequence` 已加 `TimeoutExpired`/`FileNotFoundError` 异常捕获，异常不再穿透导致 session 泄漏。
+- task 循环已加 `try/finally`，确保 `_close_browser_session` 总执行。
+- CLI 已加 `--platforms`/`--queries` 参数，主项目 Web 后台配置可传递到真实采集。
+- `run_shell_collection` 已加 `platforms_override`/`queries_override`。
+
 ## 输出要求
 
 每日资料包必须包含：

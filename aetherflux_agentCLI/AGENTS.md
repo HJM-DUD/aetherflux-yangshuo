@@ -33,6 +33,15 @@ GuGU 对编程只是略懂皮毛，回复要尽量中文、直接、少术语。
 - 删除
 - 上传私有文件
 
+## 当前状态（V0.2.5，2026-05-30）
+
+- `cli.py`：骨架已完成（`run`/`scheduler-hook`/`backend-hook`），已加 `--platforms`/`--queries` 参数。
+- `bundle.py`：每日资料包契约已实现。
+- `safety.py`：自主操作硬边界已实现。
+- `agent_adapter.py`：Hermes 命令模板已实现。
+- `collector.py`：Observe-Plan-Act 采集循环**实现中**。
+- CLI 已加 `--platforms`/`--queries`（TODO: agentCLI collector 实现后接线）。
+
 ## 工作流接口
 
 - `run` 是人工/脚本直接运行入口。

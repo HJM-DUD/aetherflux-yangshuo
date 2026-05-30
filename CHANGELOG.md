@@ -1,6 +1,6 @@
 # 升级日志 / Changelog
 
-本文档记录「以太通量 / AetherFlux」阳朔旅游情报决策系统的所有版本变更。
+本文档记录「以太通量 / AetherFlux」情报决策系统的所有版本变更。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并使用 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
