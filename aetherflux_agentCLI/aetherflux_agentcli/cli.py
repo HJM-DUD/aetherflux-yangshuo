@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
 from typing import Any, Dict
 
-from .bundle import BundleWriter, copy_bundle_to_inbox
+from .collector import AgentCollectionConfig, load_config, plan_supported_tasks, run_agent_collection
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,36 +15,43 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("run", "scheduler-hook", "backend-hook"):
         command = subcommands.add_parser(name)
         command.add_argument("--dry-run", action="store_true")
+        command.add_argument("--config", default="config/collect.json")
+        command.add_argument("--stage", choices=["titles", "screen", "videos", "all"], default="all")
+        command.add_argument("--no-sleep", action="store_true")
         command.add_argument("--bundle-root", default="data/daily_bundles")
         command.add_argument("--main-inbox", default="")
-        command.add_argument("--platforms", nargs="*", default=None)  # TODO: wire to run() when agentCLI collection logic is implemented
-        command.add_argument("--queries", nargs="*", default=None)  # TODO: wire to run() when agentCLI collection logic is implemented
+        command.add_argument("--platforms", nargs="*", default=None)
+        command.add_argument("--queries", nargs="*", default=None)
     return parser
 
 
 def run(args: argparse.Namespace) -> Dict[str, Any]:
-    bundle_date = datetime.now(timezone.utc).date().isoformat()
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    config: AgentCollectionConfig = load_config(args.config)
+    config.bundle_root = args.bundle_root
+    if args.main_inbox:
+        config.main_inbox = args.main_inbox
+    platforms = list(args.platforms) if args.platforms else None
+    queries = list(args.queries) if args.queries else None
+    effective_platforms = platforms or config.normalized_platforms()
+    effective_queries = queries or config.normalized_queries()
+    tasks, errors = plan_supported_tasks(effective_platforms, effective_queries, per_platform=config.target_per_platform)
     if args.dry_run:
         return {
             "ok": True,
             "mode": "agentCLI",
             "dry_run": True,
+            "tasks": tasks,
+            "errors": errors,
             "allowed_actions": ["open", "click", "fill", "scroll", "wait", "extract"],
             "hard_stop": ["login", "captcha", "account_settings", "publish", "payment", "delete", "upload"],
         }
-    bundle = BundleWriter(args.bundle_root, mode="agentCLI", node_id="local").create_bundle(
-        bundle_date=bundle_date,
-        run_id=run_id,
-        mission={"place": "阳朔", "industry": "旅游"},
-        raw_items=[],
-        screened_items=[],
-        asr_results=[],
-        agent_decisions=[],
-        errors=[],
+    return run_agent_collection(
+        config,
+        sleep_enabled=not args.no_sleep,
+        stage=args.stage,
+        platforms_override=platforms,
+        queries_override=queries,
     )
-    copied = copy_bundle_to_inbox(bundle.path, args.main_inbox) if args.main_inbox else None
-    return {"ok": True, "mode": "agentCLI", "bundle": str(bundle.path), "copied_to": str(copied) if copied else ""}
 
 
 def main() -> None:

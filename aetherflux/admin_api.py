@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import platform as platform_module
 import signal
@@ -430,22 +431,76 @@ def create_app(store: IntelligenceStore, project_root: Path | str = ".") -> Fast
 
     @app.get("/api/v1/release/status")
     def release_status() -> Dict[str, Any]:
+        changelog = _parse_changelog(root)
         return {
-            "version": "V0.2.4",
-            "checklist": [
-                "更新 CHANGELOG.md",
-                "更新 pyproject.toml 版本号",
-                "运行 Python 与前端测试",
-                "提交并推送 main",
-                "创建 annotated tag v0.2.4",
-                "创建 GitHub Release",
-            ],
+            "current_version": changelog["current_version"],
+            "github_repo": "https://github.com/HJM-DUD/aetherflux-yangshuo",
+            "changelog_url": "https://github.com/HJM-DUD/aetherflux-yangshuo/blob/main/CHANGELOG.md",
+            "releases_url": "https://github.com/HJM-DUD/aetherflux-yangshuo/releases",
+            "versions": changelog["versions"],
         }
 
     return app
 
 
 # ── Helpers ────────────────────────────────────────────────────────
+
+
+def _parse_changelog(root: Path) -> Dict[str, Any]:
+    """Parse CHANGELOG.md into structured version data."""
+    changelog_path = root / "CHANGELOG.md"
+    versions: List[Dict[str, Any]] = []
+    current_version = "V0.2.4"
+
+    if not changelog_path.exists():
+        return {"current_version": current_version, "versions": versions}
+
+    try:
+        text = changelog_path.read_text(encoding="utf-8")
+    except OSError:
+        return {"current_version": current_version, "versions": versions}
+
+    version_re = re.compile(r'^##\s+\[(V[\d.]+)\]\s*-\s*(\d{4}-\d{2}-\d{2})', re.MULTILINE)
+    section_re = re.compile(r'^###\s+(.+?)\s*/\s*(.+?)$', re.MULTILINE)
+    item_re = re.compile(r'^-\s+(.+)', re.MULTILINE)
+
+    v_matches = list(version_re.finditer(text))
+    if v_matches:
+        current_version = v_matches[0].group(1)
+
+    for i, v_match in enumerate(v_matches):
+        version = v_match.group(1)
+        date = v_match.group(2)
+        v_start = v_match.end()
+        next_v = version_re.search(text, v_start)
+        v_end = next_v.start() if next_v else len(text)
+        v_text = text[v_start:v_end]
+
+        sections: List[Dict[str, Any]] = []
+        for s_match in section_re.finditer(v_text):
+            zh_label = s_match.group(1).strip()
+            s_start = s_match.end()
+            next_s = section_re.search(v_text, s_start)
+            s_end = next_s.start() if next_s else len(v_text)
+            s_text = v_text[s_start:s_end]
+
+            items: List[str] = []
+            for item_m in item_re.finditer(s_text):
+                item_text = item_m.group(1).strip()
+                if item_text.startswith("`") and len(item_text) < 50:
+                    continue  # skip inline code snippets
+                item_text = re.sub(r'\*\*([^*]+)\*\*', r'\1', item_text)
+                item_text = re.sub(r'`([^`]+)`', r'\1', item_text)
+                if len(item_text) > 3:
+                    items.append(item_text)
+
+            if items:
+                sections.append({"label": zh_label, "items": items[:8]})
+
+        if sections:
+            versions.append({"version": version, "date": date, "sections": sections})
+
+    return {"current_version": current_version, "versions": versions}
 
 
 def _load_collection_config(root: Path, store: IntelligenceStore) -> Dict[str, Any]:

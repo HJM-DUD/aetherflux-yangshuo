@@ -147,14 +147,14 @@ describe("V0.2.4 admin app", () => {
     expect(screen.getByRole("heading", { name: "以太情报后台" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "采集优先的阳朔旅游情报后台" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "采集操作台" })).toBeInTheDocument();
-    expect(screen.getByText("采集流程控制")).toBeInTheDocument();
+    expect(screen.getByText("采集目标")).toBeInTheDocument();
     expect(screen.getAllByText("采集模式一（脚本主导）").length).toBeGreaterThan(0);
     expect(screen.getAllByText("采集模式二（Agent主导）").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "网页手动启动" }).length).toBe(2);
-    expect(screen.getAllByRole("button", { name: "启动自动化任务" }).length).toBe(2);
-    expect(screen.getAllByRole("button", { name: "停止采集" }).length).toBe(2);
-    expect(screen.getByText("第二步：清理数据")).toBeInTheDocument();
-    expect(screen.getByText("第三步：生成当日资料包")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "启动采集" }).length).toBe(2);
+    expect(screen.getAllByRole("button", { name: "停止" }).length).toBeGreaterThan(1);
+    expect(screen.getByText("清理数据")).toBeInTheDocument();
+    expect(screen.getByText("生成资料包")).toBeInTheDocument();
     expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
     expect(screen.getAllByText("已完成").length).toBeGreaterThan(0);
     expect(screen.queryByText("当前阶段")).not.toBeInTheDocument();
@@ -286,7 +286,7 @@ describe("V0.2.4 admin app", () => {
     expect(screen.getAllByText("小红书")[0]).toHaveClass("bg-primary", "text-primary-foreground");
     expect(screen.getAllByText("♪").length).toBeGreaterThan(0);
     expect(screen.getAllByText("运行中")[0]).toHaveClass("bg-primary", "text-primary-foreground");
-    expect(screen.getByText("视频语音处理")).toHaveClass("bg-slate-100", "text-slate-800");
+    expect(screen.getByRole("button", { name: "语音转文字深处理" })).toBeInTheDocument();
   });
 
   it("switches between light and dark themes from global settings", async () => {
@@ -328,7 +328,7 @@ describe("V0.2.4 admin app", () => {
     expect(screen.getAllByText("抖音").length).toBeGreaterThan(0);
 
     await act(async () => {
-      fireEvent.click(screen.getAllByRole("button", { name: "启动自动化任务" })[0]);
+      fireEvent.click(screen.getAllByRole("button", { name: "启动采集" })[0]);
     });
 
     const jobPosts = fetchMock.mock.calls.filter(([url, init]) => String(url).includes("/api/v1/collection/jobs") && (init as RequestInit | undefined)?.method === "POST");
@@ -343,10 +343,10 @@ describe("V0.2.4 admin app", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "自动" }));
+      fireEvent.click(screen.getByRole("button", { name: "自动执行" }));
     });
     await act(async () => {
-      fireEvent.click(screen.getAllByRole("button", { name: "启动自动三步" })[1]);
+      fireEvent.click(screen.getAllByRole("button", { name: "自动三步" })[1]);
     });
 
     const nextJobPosts = fetchMock.mock.calls.filter(([url, init]) => String(url).includes("/api/v1/collection/jobs") && (init as RequestInit | undefined)?.method === "POST");
@@ -365,14 +365,14 @@ describe("V0.2.4 admin app", () => {
     });
 
     const queue = await screen.findByTestId("collection-job-table");
-    expect(within(queue).getByText("job-1")).toBeInTheDocument();
-    expect(within(queue).queryByText("job-9")).not.toBeInTheDocument();
-    expect(screen.getByText(/第 1 \/ 2 页/)).toBeInTheDocument();
+    expect(within(queue).getByText("job-1…")).toBeInTheDocument();
+    expect(within(queue).queryByText("job-9…")).not.toBeInTheDocument();
+    expect(screen.getByText(/第 1\/2 页/)).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+      fireEvent.click(screen.getByRole("button", { name: "下页" }));
     });
-    expect(within(queue).getByText("job-9")).toBeInTheDocument();
+    expect(within(queue).getByText("job-9…")).toBeInTheDocument();
 
     const before = fetchMock.mock.calls.length;
     await act(async () => {

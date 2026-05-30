@@ -20,6 +20,9 @@
 - 新增主项目资料包 inbox 复制约定：`data/daily_bundles_inbox/{mode}/{date}/{run_id}/`。
 - 新增 `config/agents.json` 命令模板方式，Hermes 暂作默认 agent，但可替换为其他本地 agent。
 - 新增两个子项目专用 Codex skill，分别固化 shellCLI 监工流程和 agentCLI 自主采集流程。
+- agentCLI 新增抖音视频深处理链路：优先通过浏览器详情页解析 `video.currentSrc` 下载，`yt-dlp` 作为备用；随后 `ffmpeg` 抽音频并调用 Whisper 后端转写。
+- agentCLI 新增媒体信息价值判断：`asr_results.jsonl` 写入 `information_value`，区分 `useful`、`low_value`、`review_needed` 和 `needs_ocr`，避免纯配乐或低信号视频进入高价值情报。
+- agentCLI 新增图文/滚动图片处理占位：下载图片引用并标记 `needs_ocr`，后续接 OCR/视觉识别。
 
 ### 修复 / Fixed（Codex + Hermes + Antigravity 三方审查）
 
@@ -34,13 +37,14 @@
 ### 安全 / Security
 
 - agentCLI 高度自主但设硬边界：登录、验证码、账号设置、发布、支付、删除、上传私有文件等动作必须停止并请求 GuGU。
+- 第三方抖音解析器默认禁用：`douyin.txt` 插件源码会把目标 URL 发给 `tiktokio.com` 并读取 `.tk-down-link`，只能在 GuGU 明确允许后作为外部备用下载方案。
 - 视频号在 V0.2.5 只保留默认禁用占位，不进入真实采集队列，不写假成功。
 
 ### 验证 / Verification
 
 - 新增 `aetherflux_shellCLI/tests/test_shellcli_workflow.py`，覆盖每日资料包、主项目 inbox 复制、视频号禁用占位、agent 命令模板和 CLI 钩子。
-- 新增 `aetherflux_agentCLI/tests/test_agentcli_workflow.py`，覆盖每日资料包、主项目 inbox 复制、自主动作安全拦截、agent 命令模板和 CLI 钩子。
-- 修复后全量测试 46/46 通过（shellCLI 15 + agentCLI 6 + admin API 15 + 前端 10）。
+- 新增 `aetherflux_agentCLI/tests/test_agentcli_workflow.py`，覆盖每日资料包、主项目 inbox 复制、自主动作安全拦截、agent 命令模板、CLI 钩子、真实采集命令、浏览器媒体下载、ASR 和信息价值判断。
+- agentCLI 子项目测试 17/17 通过。
 - 修复经过 Codex + Hermes + Antigravity 三方交叉审查，一致确认通过。
 
 ## [V0.2.4] - 2026-05-29

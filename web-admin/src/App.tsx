@@ -822,126 +822,152 @@ export default function App() {
         {toast && <div className="mx-4 mt-4 rounded-md border border-border bg-card px-4 py-3 text-sm md:mx-6">{toast}</div>}
 
         <div className="space-y-6 p-4 md:p-6">
-          {activePage === "collection-console" && (
+                    {activePage === "collection-console" && (
             <Page title="采集操作台" icon={<Activity className="h-5 w-5" />}>
-              <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-                <Card>
-                  <CardHeader>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <CardTitle>采集流程控制</CardTitle>
-                      <div className="inline-flex rounded-full bg-muted p-1" aria-label="采集执行模式">
-                        {(["manual", "auto"] as CollectionRunMode[]).map((mode) => (
-                          <button
-                            key={mode}
-                            aria-pressed={collectionRunMode === mode}
-                            className={`rounded-full px-4 py-2 text-sm font-bold transition ${collectionRunMode === mode ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                            onClick={() => setCollectionRunMode(mode)}
-                            type="button"
-                          >
-                            {mode === "manual" ? "手动" : "自动"}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <Field label="目标平台">
-                      <div className="flex flex-wrap gap-2">
-                        {config.platforms.length ? config.platforms.map((platform) => (
-                          <PlatformBadge key={platform} platform={platform} />
-                        )) : (
-                          <Badge tone="warning">未配置平台</Badge>
-                        )}
-                      </div>
-                    </Field>
-                    <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
-                      {collectionRunMode === "manual"
-                        ? "手动模式：你在控制台按顺序启动采集、清理、打包三个步骤。两个采集模式可以并行运行。"
-                        : "自动模式：点击模式内自动化按钮后，后台按采集、清理、打包的三步结构记录任务和日志。两个采集模式可以并行运行。"}
-                    </div>
-                    <div className="grid gap-4 2xl:grid-cols-2">
-                      {collectionModes.map((mode) => (
-                        <CollectionModePanel
-                          key={mode.id}
-                          mode={mode}
-                          jobs={jobs}
-                          runMode={collectionRunMode}
-                          onStart={(action) => void startCollectionJob(mode.id, action)}
-                          onStop={(jobId) => void cancelJob(jobId)}
-                        />
-                      ))}
-                    </div>
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <WorkflowStepCard
-                        title="第二步：清理数据"
-                        description="只做安全扫描、整理和进度记录；不执行物理删除。"
-                        jobs={jobs}
-                        action="clean"
-                        onStart={(mode) => void startCollectionJob(mode, "clean")}
-                      />
-                      <WorkflowStepCard
-                        title="第三步：生成当日资料包"
-                        description="生成给第二部分智脑使用的当日资料包，并写入上传/交接日志。"
-                        jobs={jobs}
-                        action="package"
-                        onStart={(mode) => void startCollectionJob(mode, "package")}
-                      />
-                      </div>
-                    <CollectionProgressPanel jobs={jobs} />
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <Metric label="标题池目标/平台" value={config.title_target_per_platform} />
-                      <Metric label="深处理上限/平台" value={config.deep_process_limit_per_platform} />
-                      <Metric label="并发上限" value={config.parallel_limit} tone={config.parallel_limit > 2 ? "warning" : "neutral"} />
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between gap-3">
-                      <CardTitle>任务队列与日志</CardTitle>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs text-muted-foreground">{jobsRefreshedAt ? `上次刷新 ${jobsRefreshedAt}` : "每 5 秒自动刷新"}</span>
-                        <Button variant="secondary" onClick={() => void fetchJobs()}><RefreshCcw className="h-4 w-4" />刷新</Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <DataTable
-                      testId="collection-job-table"
-                      items={visibleJobs}
-                      empty="暂无采集任务。启动任一采集模式后，这里会显示任务状态、阶段和日志入口。"
-                      columns={[
-                        ["任务", (job) => <button className="font-mono text-primary hover:underline" onClick={() => void fetchJobLog(job.id)}>{job.id}</button>],
-                        ["模式", (job) => <Badge tone={job.mode === "agentCLI" ? "success" : "info"}>{formatCollectionMode(job.mode)}</Badge>],
-                        ["平台", (job) => <PlatformBadgeGroup platform={job.platform} />],
-                        ["阶段", (job) => <StageBadge stage={job.stage} />],
-                        ["状态", (job) => <StatusBadge status={job.status} />],
-                        ["操作", (job) => ["queued", "running", "cancelling"].includes(String(job.status)) ? (
-                          <Button variant="danger" onClick={() => void cancelJob(job.id)}>停止</Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">无需操作</span>
-                        )]
-                      ]}
-                    />
-                    {jobs.length > 0 && (
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
-                        <span className="text-muted-foreground">第 {jobPage} / {jobPageCount} 页，共 {jobs.length} 个任务</span>
-                        <div className="flex gap-2">
-                          <Button variant="secondary" disabled={jobPage <= 1} onClick={() => setJobPage((page) => Math.max(1, page - 1))}>上一页</Button>
-                          <Button variant="secondary" disabled={jobPage >= jobPageCount} onClick={() => setJobPage((page) => Math.min(jobPageCount, page + 1))}>下一页</Button>
-                        </div>
-                      </div>
-                    )}
-                    <pre className="max-h-64 overflow-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{jobLog || "点击任务 ID 查看日志；真实失败时这里会显示 OpenCLI、登录态、平台限制或依赖错误。"}</pre>
-                  </CardContent>
-                </Card>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {/* Stats strip */}
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <CollectionStatCard label="候选情报" value={counts.candidates || 0} tone="blue" />
                 <CollectionStatCard label="已确认" value={counts.approved || 0} tone="emerald" />
                 <CollectionStatCard label="风险预警" value={counts.risks || 0} tone="rose" />
                 <CollectionStatCard label="生成式搜索高疑似" value={counts.geo_high || 0} tone="amber" />
               </div>
+
+              {/* Platform bar + mode toggle */}
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4">
+                <div className="flex flex-wrap items-center gap-4 min-w-0">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground shrink-0">采集目标</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {config.platforms.length ? config.platforms.map((platform) => (
+                      <PlatformBadge key={platform} platform={platform} />
+                    )) : (
+                      <Badge tone="warning">未配置平台</Badge>
+                    )}
+                  </div>
+                  <span className="hidden lg:inline text-xs text-muted-foreground/60">|</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-md">
+                    {collectionRunMode === "manual"
+                      ? "手动模式：按顺序启动采集、清理、打包三个步骤"
+                      : "自动模式：点击自动化按钮后，后台依序执行采集→清理→打包"}
+                  </span>
+                </div>
+                <div className="inline-flex rounded-full bg-muted p-1 shrink-0" aria-label="采集执行模式">
+                  {(["manual", "auto"] as CollectionRunMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      aria-pressed={collectionRunMode === mode}
+                      className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
+                        collectionRunMode === mode
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => setCollectionRunMode(mode)}
+                      type="button"
+                    >
+                      {mode === "manual" ? "手动分步" : "自动执行"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Collection modes — two panels side by side */}
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-1 rounded-full bg-primary" />
+                <h3 className="text-sm font-semibold text-foreground">采集模式</h3>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-2">
+                {collectionModes.map((mode) => (
+                  <CollectionModePanelV2
+                    key={mode.id}
+                    mode={mode}
+                    jobs={jobs}
+                    runMode={collectionRunMode}
+                    onStart={(action: CollectionAction) => void startCollectionJob(mode.id, action)}
+                    onStop={(jobId: string) => void cancelJob(jobId)}
+                  />
+                ))}
+              </div>
+
+              {/* Cleanup + package */}
+              <div className="flex items-center gap-2 pt-2">
+                <span className="h-3 w-1 rounded-full bg-muted-foreground/40" />
+                <h3 className="text-sm font-semibold text-foreground">后续步骤</h3>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <WorkflowStepCardV2
+                  title="清理数据"
+                  description="安全扫描、整理和进度记录；不执行物理删除"
+                  jobs={jobs}
+                  action="clean"
+                  onStart={(mode: CollectionModeId) => void startCollectionJob(mode, "clean")}
+                />
+                <WorkflowStepCardV2
+                  title="生成资料包"
+                  description="生成当日资料包，写入智脑入口"
+                  jobs={jobs}
+                  action="package"
+                  onStart={(mode: CollectionModeId) => void startCollectionJob(mode, "package")}
+                />
+              </div>
+
+              {/* Metrics */}
+              <div className="grid grid-cols-3 gap-3">
+                <CompactMetric label="标题池/平台" value={config.title_target_per_platform} />
+                <CompactMetric label="深处理/平台" value={config.deep_process_limit_per_platform} />
+                <CompactMetric label="并发上限" value={config.parallel_limit} highlight={config.parallel_limit > 2} />
+              </div>
+
+              {/* Overall progress */}
+              <CollectionProgressPanel jobs={jobs} />
+
+              {/* Task queue — full width at bottom */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle>任务队列</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground">{jobsRefreshedAt ? `刷新 ${jobsRefreshedAt}` : "每 5 秒刷新"}</span>
+                      <Button variant="secondary" onClick={() => void fetchJobs()} className="h-8 px-2.5 text-xs"><RefreshCcw className="h-3.5 w-3.5" />刷新</Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <DataTable
+                    testId="collection-job-table"
+                    items={visibleJobs}
+                    empty="暂无采集任务。启动采集后这里会显示任务状态和日志入口。"
+                    columns={[
+                      ["任务", (job: AnyRecord) => <button className="font-mono text-xs text-primary hover:underline" onClick={() => void fetchJobLog(job.id)}>{String(job.id).slice(0, 16)}…</button>],
+                      ["模式", (job: AnyRecord) => <Badge tone={job.mode === "agentCLI" ? "success" : "info"}>{formatCollectionMode(job.mode)}</Badge>],
+                      ["平台", (job: AnyRecord) => <PlatformBadgeGroup platform={job.platform} />],
+                      ["状态", (job: AnyRecord) => <StatusBadge status={job.status} />],
+                      ["操作", (job: AnyRecord) => ["queued", "running", "cancelling"].includes(String(job.status)) ? (
+                        <Button variant="danger" className="h-8 px-2.5 text-xs" onClick={() => void cancelJob(job.id)}>停止</Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )]
+                    ]}
+                  />
+                  {jobs.length > 0 && (
+                    <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+                      <span className="text-muted-foreground">第 {jobPage}/{jobPageCount} 页 · 共 {jobs.length} 任务</span>
+                      <div className="flex gap-1.5">
+                        <Button variant="secondary" className="h-7 px-2.5 text-xs" disabled={jobPage <= 1} onClick={() => setJobPage((page) => Math.max(1, page - 1))}>上页</Button>
+                        <Button variant="secondary" className="h-7 px-2.5 text-xs" disabled={jobPage >= jobPageCount} onClick={() => setJobPage((page) => Math.min(jobPageCount, page + 1))}>下页</Button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Log viewer */}
+              <details className="group rounded-lg border border-border bg-card">
+                <summary className="cursor-pointer px-4 py-3 text-sm font-semibold select-none hover:bg-muted/50 transition-colors">
+                  任务日志
+                </summary>
+                <div className="border-t border-border px-4 py-3">
+                  <pre className="max-h-64 overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-relaxed text-slate-100">{jobLog || "点击任务 ID 查看日志。失败时这里会显示 OpenCLI、登录态、平台限制或依赖错误。"}</pre>
+                </div>
+              </details>
             </Page>
           )}
 
@@ -1198,20 +1224,60 @@ export default function App() {
             </Page>
           )}
 
-          {activePage === "release" && (
+                    {activePage === "release" && (
             <Page title="版本发布" icon={<ArchiveRestore className="h-5 w-5" />}>
-              <Card>
-                <CardHeader><CardTitle>{releaseStatus.version || "V0.2.4"}</CardTitle></CardHeader>
-                <CardContent>
-                  <ul className="grid gap-2 text-sm">
-                    {(releaseStatus.checklist || []).map((item: string) => <li key={item} className="rounded-md border border-border p-3">{item}</li>)}
-                  </ul>
-                </CardContent>
-              </Card>
+              {/* Header with GitHub links */}
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <span className="rounded-md bg-primary px-2.5 py-1 text-xs font-black text-primary-foreground">{releaseStatus.current_version || "V0.2.4"}</span>
+                  <span className="text-sm text-muted-foreground">当前版本 · 基于 CHANGELOG.md 同步</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a href={releaseStatus.changelog_url || "#"} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition">
+                    <FileJson className="h-3.5 w-3.5" />更新日志
+                  </a>
+                  <a href={releaseStatus.releases_url || "#"} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:brightness-95 transition">
+                    <ArchiveRestore className="h-3.5 w-3.5" />GitHub Releases
+                  </a>
+                </div>
+              </div>
+
+              {/* Version timeline */}
+              <div className="space-y-4">
+                {(releaseStatus.versions || []).map((ver: AnyRecord, vi: number) => (
+                  <Card key={ver.version || vi}>
+                    <CardHeader>
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-md bg-muted px-2.5 py-1 text-sm font-black text-foreground">{ver.version}</span>
+                        <span className="text-xs text-muted-foreground">{ver.date}</span>
+                        {vi === 0 && <Badge tone="success">最新</Badge>}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {(ver.sections || []).map((sec: AnyRecord) => (
+                        <div key={sec.label}>
+                          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">{sec.label}</p>
+                          <ul className="grid gap-1.5">
+                            {(sec.items || []).map((item: string, ii: number) => (
+                              <li key={ii} className="flex items-start gap-2 text-sm text-muted-foreground">
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
+                {(!releaseStatus.versions || releaseStatus.versions.length === 0) && (
+                  <EmptyState text="暂未同步版本记录。启动后台服务后会自动读取 CHANGELOG.md。" />
+                )}
+              </div>
             </Page>
           )}
 
-          {activePage === "global-settings" && (
+{activePage === "global-settings" && (
             <GlobalSettingsPage
               analysisColor={analysisColor}
               languageMode={languageMode}
@@ -1363,6 +1429,111 @@ function getStepPercent(job: AnyRecord): number {
   if (String(job.status) === "running") return 55;
   if (String(job.status) === "queued") return 12;
   return 0;
+}
+
+
+// ── V2 Collection Console sub-components (redesigned) ────────
+
+function CollectionModePanelV2({
+  mode,
+  jobs,
+  runMode,
+  onStart,
+  onStop
+}: {
+  mode: (typeof collectionModes)[number];
+  jobs: AnyRecord[];
+  runMode: CollectionRunMode;
+  onStart: (action: CollectionAction) => void;
+  onStop: (jobId: string) => void;
+}) {
+  const activeJob = findModeJob(jobs, mode.id, ["collect", "auto_pipeline"]);
+  const isRunning = activeJob && ["queued", "running", "cancelling"].includes(String(activeJob.status));
+  const action = runMode === "auto" ? "auto_pipeline" : "collect";
+  const stats = getJobStats(activeJob);
+  const borderColor = mode.tone === "emerald" ? "border-l-emerald-500" : "border-l-blue-500";
+  const headerBadge = mode.tone === "emerald" ? "success" : "info";
+
+  return (
+    <section className={`rounded-lg border border-border/80 bg-card shadow-sm border-l-[3px] ${borderColor}`}>
+      <div className="px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Badge tone={headerBadge as any}>{mode.tone === "emerald" ? "Agent 主导" : "脚本主导"}</Badge>
+              {isRunning && <Badge tone="info">运行中</Badge>}
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">{mode.subtitle}</p>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button variant="secondary" className="h-9 px-3 text-xs" onClick={() => onStart("manual_web")}><Globe2 className="h-3.5 w-3.5" />网页手动启动</Button>
+          <Button className="h-9 px-3 text-xs" onClick={() => onStart(action)}><Play className="h-3.5 w-3.5" />{runMode === "auto" ? "自动三步" : "启动采集"}</Button>
+          <Button variant="danger" className="h-9 px-3 text-xs" disabled={!activeJob?.id || !isRunning} onClick={() => activeJob?.id && onStop(String(activeJob.id))}>停止</Button>
+        </div>
+        {activeJob && (
+          <div className="mt-3 grid grid-cols-4 gap-2">
+            <InlineStat label="任务包" value={stats.name || "—"} />
+            <InlineStat label="已采集" value={stats.items} />
+            <InlineStat label="磁盘" value={stats.disk} />
+            <InlineStat label="耗时" value={stats.duration} />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function WorkflowStepCardV2({
+  title,
+  description,
+  jobs,
+  action,
+  onStart
+}: {
+  title: string;
+  description: string;
+  jobs: AnyRecord[];
+  action: "clean" | "package";
+  onStart: (mode: CollectionModeId) => void;
+}) {
+  const latestJob = jobs.find((job) => job.action === action);
+  const percent = latestJob ? getStepPercent(latestJob) : 0;
+
+  return (
+    <section className="rounded-lg border border-border/80 bg-card p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="text-xs font-semibold tracking-wide uppercase text-muted-foreground">{title}</p>
+        <span className="text-[10px] tabular-nums text-muted-foreground">{percent}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground leading-relaxed">{description}</p>
+      <div className="mt-3 grid grid-cols-2 gap-1.5">
+        <Button variant="secondary" className="h-8 px-1.5 text-[11px]" onClick={() => onStart("shellCLI")}>脚本模式</Button>
+        <Button variant="secondary" className="h-8 px-1.5 text-[11px]" onClick={() => onStart("agentCLI")}>Agent模式</Button>
+      </div>
+    </section>
+  );
+}
+
+function InlineStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded bg-muted/40 px-2 py-1.5 text-center">
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className="text-xs font-semibold truncate">{value}</p>
+    </div>
+  );
+}
+
+function CompactMetric({ label, value, highlight = false }: { label: string; value: number | string; highlight?: boolean }) {
+  return (
+    <div className="rounded-md border border-border/50 bg-muted/30 px-3 py-2.5 text-center">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-lg font-bold ${highlight ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>{value}</p>
+    </div>
+  );
 }
 
 function getJobStats(job?: AnyRecord) {

@@ -29,9 +29,17 @@ Treat this project as the autonomous collection mode:
    python3 -m aetherflux_agentcli.cli run --dry-run
    ```
 
-3. Enforce action safety before executing browser actions. Stop for login, password, captcha, account settings, publish, payment, delete, or upload.
+3. Real collection goes through `aetherflux_agentcli.collector`:
 
-4. Write daily bundles as directory + JSONL:
+   ```bash
+   python3 -m aetherflux_agentcli.cli run --platforms xiaohongshu douyin --queries "阳朔 旅游"
+   ```
+
+   The collector must run `opencli doctor`, apply newest/today filters, extract public visible text, locally reject stale rows, and close the OpenCLI browser session after each platform task.
+
+4. Enforce action safety before executing browser actions. Stop for login, password, captcha, account settings, publish, payment, delete, or upload. agentCLI must wait for Hermes by default; if Hermes is unavailable or returns invalid JSON, stop the current task and record an error. Do not let local code take over the agent decision.
+
+5. Write daily bundles as directory + JSONL:
 
    - `manifest.json`
    - `raw_items.jsonl`

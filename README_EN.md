@@ -17,7 +17,7 @@ V0.2.x should make Part 1 reliable and expose clean handoff data/API surfaces fo
 V0.2.5 starts the dual-mode collector rebuild on top of the V0.2.4 Web admin:
 
 - `aetherflux_shellCLI`: script/OpenCLI-led collection, with an agent supervising, screening, and diagnosing logs.
-- `aetherflux_agentCLI`: agent-led collection, with OpenCLI and scripts as helper tools.
+- `aetherflux_agentCLI`: agent-led collection, with OpenCLI and scripts as helper tools; real Xiaohongshu/Douyin collection, newest/today filtering, browser-resolved Douyin media download, ASR, and daily bundle output are wired.
 
 Both modes emit the same daily bundle contract and can copy bundles into `data/daily_bundles_inbox/{mode}/{date}/{run_id}/` for the downstream Super Brain stage.
 
@@ -63,7 +63,10 @@ V0.2.3 is local-first and ASR-first:
 - OpenCLI Browser Bridge performs logged-in browser search, recent-time filtering attempts, scrolling, and title-pool extraction.
 - Hermes screens the lightweight title pool and selects videos for deeper ASR processing.
 - Video processing prioritizes full-video ASR transcripts over frame extraction. Keyframes are optional evidence only.
-- Local `ffmpeg` extracts audio; ASR uses local backends such as `mlx-whisper`, `faster-whisper`, or `whisper` when installed.
+- agentCLI prefers Douyin detail-page browser media URLs (`video.currentSrc`) for video download and keeps `yt-dlp` as a fallback.
+- Local `ffmpeg` extracts audio; ASR uses local backends such as `mlx-whisper`, the `mlx_whisper` CLI, `faster-whisper`, or `whisper` when installed.
+- ASR success is not treated as intelligence value by itself. `information_value` marks media as `useful`, `low_value`, `review_needed`, or `needs_ocr`.
+- Third-party Douyin resolvers stay disabled by default. The studied `douyin.txt` plugin sends the target URL to `tiktokio.com`, so it can only be used after explicit user approval.
 - Comment collection keeps hot comments, recent comments, author replies, and comments matching risk/opportunity keywords.
 - Official sources are configured on a separate admin page. When mission place, industry, or segment changes, official sources must be reviewed again and cannot silently carry over from a previous region.
 - Each day produces a `daily_bundle_YYYY-MM-DD` handoff package for the downstream Super Brain stage.
@@ -118,6 +121,7 @@ python3 -m aetherflux_shellcli.cli run --config config/collect.json --main-inbox
 cd ../aetherflux_agentCLI
 python3 -m aetherflux_agentcli.cli run --dry-run
 python3 -m aetherflux_agentcli.cli run --main-inbox ../data/daily_bundles_inbox
+python3 -m aetherflux_agentcli.cli run --platforms xiaohongshu douyin --queries "阳朔 旅游" --main-inbox ../data/daily_bundles_inbox
 ```
 
 Enable the DeepSeek advisor layer via local environment variables (never commit keys to the repo):
