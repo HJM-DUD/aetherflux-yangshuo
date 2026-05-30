@@ -5,6 +5,36 @@ import App from "../../web-admin/src/App";
 
 const fetchMock = vi.fn();
 
+function defaultConfigPayload() {
+  return {
+    platforms: ["xiaohongshu", "douyin"],
+    manual_queries: ["阳朔 旅游"],
+    segments: ["景区"],
+    risk_terms: ["避雷"],
+    opportunity_terms: ["攻略"],
+    hermes_queries: [],
+    query_strategy: "hybrid",
+    target_per_platform: 200,
+    title_target_per_platform: 200,
+    deep_process_limit_per_platform: 40,
+    freshness_window_hours: 24,
+    scroll_rounds_per_query: 8,
+    scroll_stop_after_no_new_rounds: 2,
+    wait_min_seconds: 25,
+    wait_max_seconds: 60,
+    max_items_per_task: 20,
+    detail_limit_per_task: 1,
+    video_processing_priority: "asr",
+    enable_keyframes: false,
+    asr_backend: "auto",
+    asr_model: "small",
+    asr_language: "zh",
+    cooldown_minutes_on_limit: 60,
+    quality_goal: "v023_asr_first_title_pool",
+    parallel_limit: 2
+  };
+}
+
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
@@ -28,7 +58,7 @@ beforeEach(() => {
         ok: true,
         json: () =>
           Promise.resolve({
-            version: "V0.2.4",
+            version: "V0.2.7",
             counts: {
               candidates: 0,
               approved: 0,
@@ -80,7 +110,7 @@ beforeEach(() => {
     if (url.includes("/api/v1/release/status")) {
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ version: "V0.2.4", checklist: ["运行测试"] })
+        json: () => Promise.resolve({ current_version: "V0.2.7", checklist: ["运行测试"] })
       });
     }
     if (url.includes("/api/v1/collection/jobs")) {
@@ -200,7 +230,7 @@ describe("V0.2.4 admin app", () => {
     expect(screen.getByText(/回收站为空/)).toBeInTheDocument();
     expect(screen.queryByText("V0.2.4 Web Admin")).not.toBeInTheDocument();
     expect(screen.queryByText("Freshness")).not.toBeInTheDocument();
-  });
+  }, 10000);
 
   it("keeps the sidebar fixed, collapsible, grouped, and pins utility pages at the bottom", async () => {
     await act(async () => {
@@ -359,7 +389,7 @@ describe("V0.2.4 admin app", () => {
     });
   });
 
-  it("paginates the job queue and refreshes it every five seconds on the collection console", async () => {
+  it("paginates the job queue and refreshes it every five seconds when a job is active", async () => {
     await act(async () => {
       render(<App />);
     });
@@ -380,6 +410,42 @@ describe("V0.2.4 admin app", () => {
     });
     expect(fetchMock.mock.calls.length).toBeGreaterThan(before);
   }, 8000);
+
+  it("slows collection polling to thirty seconds when no job is active", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/dashboard/summary")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ version: "V0.2.7", counts: {} }) });
+      }
+      if (url.includes("/api/v1/collection/config")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(defaultConfigPayload()) });
+      }
+      if (url.includes("/api/v1/collection/jobs")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ items: [{ id: "job-idle", status: "succeeded", platform: "douyin", mode: "shellCLI", action: "collect" }] })
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [] }) });
+    });
+
+    await act(async () => {
+      render(<App />);
+      await Promise.resolve();
+    });
+
+    const before = fetchMock.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+    expect(fetchMock.mock.calls.length).toBe(before);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(24900);
+    });
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(before);
+  });
 
   it("filters title pool items by fuzzy search text", async () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {

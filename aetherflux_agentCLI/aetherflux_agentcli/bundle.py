@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping
 
 
-BUNDLE_VERSION = "0.2.5"
+BUNDLE_VERSION = "0.2.7"
 JSONL_FILES = {
     "raw_items": "raw_items.jsonl",
     "screened_items": "screened_items.jsonl",

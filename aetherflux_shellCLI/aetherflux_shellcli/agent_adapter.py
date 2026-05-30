@@ -20,7 +20,7 @@ class AgentCommandTemplate:
 
 def default_agent_payload(role: str, context: Mapping[str, Any], data: Mapping[str, Any]) -> Dict[str, Any]:
     return {
-        "version": "0.2.5",
+        "version": "0.2.7",
         "role": role,
         "context": dict(context),
         "data": dict(data),

@@ -14,7 +14,9 @@ AetherFlux is planned as GuGU's internal agent application, not a public SaaS pr
 
 V0.2.x should make Part 1 reliable and expose clean handoff data/API surfaces for Part 2. Parts 2-5 should remain planned interfaces until real workflows are implemented.
 
-V0.2.5 starts the dual-mode collector rebuild on top of the V0.2.4 Web admin:
+V0.2.7 is a code review patch release. It keeps the V0.2.x collection direction unchanged while fixing package-script crashes, ASR dependency probing, SQLite lock waiting, log tailing, retention validation, daily bundle inbox indexing, job timeouts, and idle frontend polling.
+
+V0.2.5 started the dual-mode collector rebuild on top of the V0.2.4 Web admin:
 
 - `aetherflux_shellCLI`: script/OpenCLI-led collection, with an agent supervising, screening, and diagnosing logs.
 - `aetherflux_agentCLI`: agent-led collection, with OpenCLI and scripts as helper tools; real Xiaohongshu/Douyin collection, newest/today filtering, browser-resolved Douyin media download, ASR, and daily bundle output are wired.
@@ -111,7 +113,7 @@ python3 -m aetherflux.cli opencli-rotate --stage videos
 python3 -m aetherflux.cli opencli-rotate --stage all
 ```
 
-Run the V0.2.5 collector subprojects:
+Run the V0.2.7 collector subprojects:
 
 ```bash
 cd aetherflux_shellCLI
@@ -134,7 +136,7 @@ export DEEPSEEK_MODEL_ADVISOR="deepseek-v4-pro"
 
 ## API
 
-V0.2.5 uses `/api/v1/*` as the formal API namespace:
+V0.2.7 uses `/api/v1/*` as the formal API namespace:
 
 - `GET /api/v1/dashboard/summary`
 - `GET/PUT /api/v1/collection/config`
@@ -165,7 +167,7 @@ V0.2.5 uses `/api/v1/*` as the formal API namespace:
 - `GET /api/v1/agent/apis`
 - `GET /api/v1/release/status`
 
-The old `/api/*` routes remain only as legacy dashboard references, not the main V0.2.5 interface.
+The old `/api/*` routes remain only as legacy dashboard references, not the main V0.2.7 interface.
 
 ## Current Boundary
 

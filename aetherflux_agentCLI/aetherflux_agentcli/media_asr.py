@@ -584,4 +584,4 @@ def _mlx_whisper_cli() -> str:
             candidate = Path(base).parent / 'bin' / 'mlx_whisper'
             if candidate.exists():
                 return str(candidate)
-    return str(fallback) if fallback.exists() else ""
+    return ""

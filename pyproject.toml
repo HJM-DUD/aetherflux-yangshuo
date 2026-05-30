@@ -1,6 +1,6 @@
 [project]
 name = "aetherflux-yangshuo"
-version = "0.2.5"
+version = "0.2.7"
 description = "Local-first tourism video intelligence collection, review, dashboard, and agent API."
 requires-python = ">=3.9"
 dependencies = [

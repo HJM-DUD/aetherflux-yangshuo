@@ -1,6 +1,6 @@
 # AetherFlux AgentCLI Collector
 
-版本：V0.2.5
+版本：V0.2.7
 
 这个子项目是“agent 主导、OpenCLI/脚本辅助”的采集模式。它适合深挖、复杂页面、异常处理和高价值线索追踪。Hermes 暂时作为默认主导 agent，但必须能通过配置替换。
 

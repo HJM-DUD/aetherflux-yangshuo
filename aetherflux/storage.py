@@ -546,11 +546,13 @@ class IntelligenceStore:
         now = _utc_now()
         restore_until = _utc_now(days=14)
         moved = 0
+        items: List[tuple[str, Dict[str, Any]]] = []
+        for item_id in ids:
+            item = self.get_candidate(item_id) if item_type == "candidate" else {"id": item_id}
+            if item:
+                items.append((item_id, item))
         with self._connect() as conn:
-            for item_id in ids:
-                item = self.get_candidate(item_id) if item_type == "candidate" else {"id": item_id}
-                if not item:
-                    continue
+            for item_id, item in items:
                 conn.execute(
                     """
                     INSERT INTO trash_items (
@@ -628,8 +630,9 @@ class IntelligenceStore:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=5)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
         try:
             yield conn
             conn.commit()

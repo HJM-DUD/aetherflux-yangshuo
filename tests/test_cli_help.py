@@ -77,7 +77,7 @@ class CLIHelpTests(unittest.TestCase):
         )
 
         output = " ".join(result.stdout.split())
-        self.assertIn("V0.2.4 FastAPI admin backend", output)
+        self.assertIn("V0.2.7 FastAPI admin backend", output)
 
 
 if __name__ == "__main__":

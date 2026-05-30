@@ -1,4 +1,4 @@
-"""Yangshuo tourism intelligence system — V0.2.4."""
+"""Yangshuo tourism intelligence system — V0.2.7."""
 
 __all__ = [
     "admin_api",

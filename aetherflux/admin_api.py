@@ -1,8 +1,9 @@
-"""FastAPI backend for the V0.2.4 local admin console."""
+"""FastAPI backend for the V0.2.7 local admin console."""
 
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import os
 import platform as platform_module
@@ -30,6 +31,12 @@ from .paths import (
     shellcli_bundle_root,
 )
 from .storage import IntelligenceStore
+
+APP_VERSION = "0.2.7"
+APP_VERSION_LABEL = "V0.2.7"
+JOB_LOG_TAIL_BYTES = 200 * 1024
+JOB_TIMEOUT_SECONDS = 7200
+JOB_TERMINATE_GRACE_SECONDS = 30
 
 DEFAULT_COLLECT_CONFIG = {
     "platforms": ["xiaohongshu", "douyin"],
@@ -117,7 +124,7 @@ class TrashRestorePayload(BaseModel):
 
 def create_app(store: IntelligenceStore, project_root: Path | str = ".") -> FastAPI:
     root = Path(project_root)
-    app = FastAPI(title="AetherFlux V0.2.4 Admin API", version="0.2.4")
+    app = FastAPI(title="AetherFlux V0.2.7 Admin API", version=APP_VERSION)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -151,7 +158,7 @@ def create_app(store: IntelligenceStore, project_root: Path | str = ".") -> Fast
         ]
         return _safe_payload(
             {
-                "version": "V0.2.4",
+                "version": APP_VERSION_LABEL,
                 "generated_at": _utc_now(),
                 "counts": {
                     "candidates": len(candidates),
@@ -229,7 +236,7 @@ def create_app(store: IntelligenceStore, project_root: Path | str = ".") -> Fast
         log_path = Path(job.get("log_path", ""))
         if not log_path.exists():
             return PlainTextResponse("", status_code=200)
-        content = log_path.read_text(encoding="utf-8")
+        content = _read_log_tail(log_path)
         return PlainTextResponse(content, status_code=200)
 
     @app.post("/api/v1/collection/jobs/{job_id}/cancel")
@@ -324,9 +331,11 @@ def create_app(store: IntelligenceStore, project_root: Path | str = ".") -> Fast
 
     @app.post("/api/v1/admin/retention")
     def save_retention(payload: Dict[str, Any]) -> Dict[str, Any]:
+        evidence_hours = _parse_required_int(payload, "evidence_hours", 48)
+        cloud_log_months = _parse_required_int(payload, "cloud_log_months", store.get_cloud_log_months())
         store.set_retention_hours(
-            int(payload.get("evidence_hours", 48)),
-            cloud_log_months=int(payload.get("cloud_log_months", store.get_cloud_log_months())),
+            evidence_hours,
+            cloud_log_months=cloud_log_months,
         )
         return retention()
 
@@ -334,6 +343,7 @@ def create_app(store: IntelligenceStore, project_root: Path | str = ".") -> Fast
 
     @app.get("/api/v1/daily-bundles")
     def daily_bundles() -> Dict[str, Any]:
+        _sync_daily_bundles_from_inbox(store)
         return {"items": _safe_payload(store.list_daily_bundles())}
 
     @app.get("/api/v1/cloud-log-syncs")
@@ -455,7 +465,7 @@ def _parse_changelog(root: Path) -> Dict[str, Any]:
     """Parse CHANGELOG.md into structured version data."""
     changelog_path = root / "CHANGELOG.md"
     versions: List[Dict[str, Any]] = []
-    current_version = "V0.2.4"
+    current_version = APP_VERSION_LABEL
 
     if not changelog_path.exists():
         return {"current_version": current_version, "versions": versions}
@@ -734,18 +744,18 @@ def _bundle_command(package_name: str, mode: str, inbox: Path) -> List[str]:
 def _copy_latest_bundle_script(mode: str, inbox: Path) -> str:
     return (
         "from pathlib import Path\n"
-        "import json, shutil\n"
+        "import os, json, shutil\n"
         "data_root = os.environ.get('AETHERFLUX_DATA_ROOT', '/Users/gugu/Documents/Agent/AetherFlux_Data')\n"
-        "bundles_root = Path(data_root) / mode / 'daily_bundles'\n"
+        f"bundles_root = Path(data_root) / {mode!r} / 'daily_bundles'\n"
         "if not bundles_root.exists():\n"
         "    print('无资料包目录，跳过打包。')\n"
         "    exit(0)\n"
-        "candidates = sorted(bundles_root.glob('daily_bundle_*'), reverse=True)\n"
+        "candidates = sorted(bundles_root.glob('daily_bundle_*/*/manifest.json'), key=lambda p: p.stat().st_mtime, reverse=True)\n"
         "if not candidates:\n"
         "    print('未找到已有资料包，跳过打包。')\n"
         "    exit(0)\n"
-        "latest = candidates[0]\n"
-        "manifest_path = latest / 'manifest.json'\n"
+        "manifest_path = candidates[0]\n"
+        "latest = manifest_path.parent\n"
         "if not manifest_path.exists():\n"
         "    print(f'资料包 {latest.name} 缺少 manifest，跳过。')\n"
         "    exit(0)\n"
@@ -835,7 +845,25 @@ def _run_job_sync(job: Dict[str, Any], store: IntelligenceStore) -> None:
         )
         job["pid"] = process.pid
         store.save_admin_job(job)
-        return_code = process.wait()
+        timed_out = False
+        try:
+            return_code = process.wait(timeout=JOB_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            return_code = -signal.SIGTERM
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                return_code = process.wait(timeout=JOB_TERMINATE_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                return_code = -signal.SIGKILL
+                try:
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
     job["ended_at"] = _utc_now()
     job["exit_code"] = return_code
     job["log_size_bytes"] = log_path.stat().st_size if log_path.exists() else 0
@@ -845,10 +873,72 @@ def _run_job_sync(job: Dict[str, Any], store: IntelligenceStore) -> None:
         job["cancel_requested_at"] = latest.get("cancel_requested_at")
         job["error_summary"] = "user_cancelled"
     else:
-        job["status"] = "succeeded" if return_code == 0 else "failed"
-        if return_code != 0:
+        job["status"] = "failed" if timed_out else ("succeeded" if return_code == 0 else "failed")
+        if timed_out:
+            job["error_summary"] = "job_timed_out_after_2h"
+        elif return_code != 0:
             job["error_summary"] = f"exit_code={return_code}"
     store.save_admin_job(job)
+    if job["status"] == "succeeded":
+        _sync_daily_bundles_from_inbox(store)
+
+
+def _read_log_tail(log_path: Path, limit_bytes: int = JOB_LOG_TAIL_BYTES) -> str:
+    size = log_path.stat().st_size
+    with log_path.open("rb") as handle:
+        if size <= limit_bytes:
+            return handle.read().decode("utf-8", errors="replace")
+        handle.seek(-limit_bytes, os.SEEK_END)
+        tail = handle.read().decode("utf-8", errors="replace")
+    return f"(truncated: showing last {limit_bytes} of {size} bytes)\n{tail}"
+
+
+def _parse_required_int(payload: Mapping[str, Any], key: str, default: int) -> int:
+    value = payload.get(key, default)
+    if value is None or value == "":
+        raise HTTPException(status_code=422, detail=f"{key} must be an integer")
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"{key} must be an integer") from exc
+
+
+def _sync_daily_bundles_from_inbox(store: IntelligenceStore) -> int:
+    inbox = daily_bundles_inbox_dir()
+    synced = 0
+    if not inbox.exists():
+        return synced
+    for manifest_path in sorted(inbox.glob("*/*/*/manifest.json")):
+        bundle_dir = manifest_path.parent
+        try:
+            manifest_bytes = manifest_path.read_bytes()
+            manifest = json.loads(manifest_bytes.decode("utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        run_id = str(manifest.get("run_id") or bundle_dir.name)
+        bundle_date = str(manifest.get("bundle_date") or bundle_dir.parent.name)
+        mode = str(manifest.get("mode") or bundle_dir.parent.parent.name)
+        size_bytes = 0
+        try:
+            size_bytes = sum(path.stat().st_size for path in bundle_dir.iterdir() if path.is_file())
+        except OSError:
+            size_bytes = 0
+        store.save_daily_bundle(
+            {
+                "id": f"{mode}:{bundle_date}:{run_id}",
+                "bundle_date": bundle_date,
+                "node_id": str(manifest.get("node_id") or mode),
+                "path": str(bundle_dir),
+                "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+                "size_bytes": size_bytes,
+                "manifest_json": manifest,
+                "cloud_log_status": "pending",
+            }
+        )
+        synced += 1
+    return synced
 
 
 def _run_diagnostic(command: List[str], cwd: Path) -> Dict[str, Any]:
@@ -888,8 +978,10 @@ def _safe_payload(value: Any) -> Any:
         return safe
     if isinstance(value, list):
         return [_safe_payload(item) for item in value]
-    if isinstance(value, str) and any(secret in value.lower() for secret in ("api_key", "cookie", "token", "password", "secret")):
+    if isinstance(value, str) and _is_http_url(value):
         return _safe_string(value)
+    if isinstance(value, str) and _looks_like_token(value):
+        return "redacted"
     return value
 
 
@@ -899,6 +991,7 @@ _SENSITIVE_VALUE_PATTERNS = [
     "sk-ant-[a-zA-Z0-9_-]+",
     "Bearer [a-zA-Z0-9._-]{20,}",
     "dsk-[a-zA-Z0-9]{20,}",
+    "(?i)[a-z0-9_]*api_key",
 ]
 
 def _looks_like_token(value: str) -> bool:
@@ -916,6 +1009,11 @@ def _safe_string(value: str) -> str:
         ]
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(kept_query), parsed.fragment))
     return "redacted"
+
+
+def _is_http_url(value: str) -> bool:
+    parsed = urlsplit(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _looks_sensitive(value: str) -> bool:

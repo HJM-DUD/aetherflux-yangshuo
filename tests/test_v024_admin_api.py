@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,7 +9,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from aetherflux.admin_api import create_app
+from aetherflux.admin_api import _copy_latest_bundle_script, create_app
 from aetherflux.storage import IntelligenceStore
 
 
@@ -40,13 +43,13 @@ class V024AdminApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["version"], "V0.2.4")
+        self.assertEqual(payload["version"], "V0.2.7")
         self.assertEqual(payload["counts"]["candidates"], 1)
         self.assertEqual(payload["counts"]["approved"], 1)
         dumped = json.dumps(payload, ensure_ascii=False).lower()
         self.assertNotIn("api_key", dumped)
         self.assertNotIn("cookie", dumped)
-        self.assertNotIn("token", dumped)
+        self.assertEqual(payload["system"]["deepseek"]["key_source"], "redacted")
 
     def test_candidate_urls_keep_source_link_but_strip_sensitive_query_tokens(self):
         self.store.upsert_candidate(
@@ -237,6 +240,38 @@ class V024AdminApiTests(unittest.TestCase):
         self.assertIn("第三步：复制最近采集资料包到智脑入口", " ".join(auto_job["command"]))
         self.assertFalse(shell_job.get("physical_delete_performed", False))
 
+    def test_package_script_imports_os_and_copies_non_empty_bundle(self):
+        data_root = self.root / "runtime"
+        source = data_root / "agentCLI" / "daily_bundles" / "daily_bundle_2026-05-31" / "run-001"
+        inbox = self.root / "inbox"
+        source.mkdir(parents=True)
+        (source / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "bundle_date": "2026-05-31",
+                    "run_id": "run-001",
+                    "mode": "agentCLI",
+                    "counts": {"raw_items": 1},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        env = dict(os.environ)
+        env["AETHERFLUX_DATA_ROOT"] = str(data_root)
+
+        result = subprocess.run(
+            [sys.executable, "-c", _copy_latest_bundle_script("agentCLI", inbox)],
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("已打包最近资料包", result.stdout)
+        self.assertTrue((inbox / "agentCLI" / "2026-05-31" / "run-001" / "manifest.json").exists())
+
     def test_collection_job_detail_and_log_endpoints(self):
         """GET /api/v1/collection/jobs/{id} returns job; /log returns log content."""
         create = self.client.post(
@@ -253,9 +288,91 @@ class V024AdminApiTests(unittest.TestCase):
         log_resp = self.client.get(f"/api/v1/collection/jobs/{job_id}/log")
         self.assertEqual(log_resp.status_code, 200)
 
+    def test_collection_job_log_returns_tail_when_large_or_invalid_utf8(self):
+        self.store.save_admin_job(
+            {
+                "id": "large-log",
+                "platform": "xiaohongshu",
+                "stage": "all",
+                "status": "succeeded",
+                "dry_run": False,
+                "command": ["python"],
+                "log_path": str(self.root / "logs" / "large.log"),
+                "created_at": "2026-05-31T00:00:00Z",
+            }
+        )
+        log_path = self.root / "logs" / "large.log"
+        log_path.parent.mkdir(parents=True)
+        log_path.write_bytes(b"a" * (210 * 1024) + b"\xfftail-marker")
+
+        response = self.client.get("/api/v1/collection/jobs/large-log/log")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.text.startswith("(truncated: showing last "))
+        self.assertIn("tail-marker", response.text)
+
     def test_collection_job_not_found_returns_404(self):
         response = self.client.get("/api/v1/collection/jobs/nonexistent-job-id")
         self.assertEqual(response.status_code, 404)
+
+    def test_retention_rejects_invalid_numbers_with_422(self):
+        response = self.client.post(
+            "/api/v1/admin/retention",
+            json={"evidence_hours": "abc", "cloud_log_months": 3},
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_daily_bundles_syncs_existing_inbox_manifest_before_listing(self):
+        inbox = self.root / "daily_bundles_inbox"
+        bundle = inbox / "agentCLI" / "2026-05-31" / "run-001"
+        bundle.mkdir(parents=True)
+        manifest = {
+            "bundle_date": "2026-05-31",
+            "run_id": "run-001",
+            "mode": "agentCLI",
+            "node_id": "mac-local",
+            "counts": {"raw_items": 2},
+        }
+        (bundle / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+        (bundle / "raw_items.jsonl").write_text("{}\n", encoding="utf-8")
+
+        with patch("aetherflux.admin_api.daily_bundles_inbox_dir", return_value=inbox):
+            response = self.client.get("/api/v1/daily-bundles")
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["items"][0]
+        self.assertEqual(item["id"], "agentCLI:2026-05-31:run-001")
+        self.assertEqual(item["manifest_json"]["counts"]["raw_items"], 2)
+        self.assertGreater(item["size_bytes"], 0)
+
+    def test_safe_payload_redacts_real_tokens_but_keeps_normal_business_text(self):
+        self.store.upsert_candidate(
+            {
+                "id": "safe-payload",
+                "title": "普通文本里提到 token 和 secret 不代表密钥",
+                "summary": "这条内容讨论 secret menu 和 token 这个词",
+                "platform": "xiaohongshu",
+                "source": "seed",
+                "score": 80,
+                "body": "Bearer abcdefghijklmnopqrstuvwxyz123456 should be hidden",
+                "url": "https://example.com/item?a=1&xsec_token=secret-value&note_id=keep",
+            }
+        )
+
+        response = self.client.get("/api/v1/intelligence/candidates")
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["items"][0]
+        self.assertIn("token 和 secret", item["title"])
+        self.assertEqual(item["body"], "redacted")
+        self.assertEqual(item["url"], "https://example.com/item?a=1&note_id=keep")
+
+    def test_sqlite_connections_apply_busy_timeout(self):
+        with self.store._connect() as conn:
+            busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+
+        self.assertEqual(busy_timeout, 5000)
 
     def test_system_diagnose_returns_deepseek_error_without_500(self):
         with patch("aetherflux.admin_api.run_deepseek_smoke_test", side_effect=RuntimeError("ssl failed")):

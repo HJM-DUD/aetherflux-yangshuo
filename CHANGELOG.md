@@ -8,6 +8,32 @@
 
 ## [Unreleased]
 
+## [V0.2.7] - 2026-05-31
+
+### 修复 / Fixed
+
+- **代码审查修补版本**：根据 Security、Quality、BugHunter、Concurrency & Perf、Architecture 五维度审查结果，优先修复真实崩溃、安全脱敏、SQLite 并发、日志 OOM、资料包索引脱节和前端轮询降噪问题。
+- 修复 Web 后台 package 资料包脚本漏 `import os` 导致 `NameError` 的问题。
+- 修复 agentCLI ASR 依赖探测中 `_mlx_whisper_cli()` 引用未定义 `fallback` 的问题。
+- 修复 SQLite 业务新连接未设置 `busy_timeout`，并发读写时容易 `database is locked` 的问题。
+- 限制采集任务日志接口返回大小，避免大日志一次性读入导致后端或浏览器卡死。
+- 调整 `_safe_payload` 脱敏策略，兼顾真实 token 拦截和普通业务文本不被误杀。
+- 让 `/api/v1/daily-bundles` 自动同步外部 inbox 中已存在的资料包元数据，避免磁盘有包但 Web 后台看不到。
+- 为后台采集子进程增加总超时与进程组终止逻辑，避免任务永久 `running`。
+- 降低采集操作台无活跃任务时的前端轮询频率。
+
+### 变更 / Changed
+
+- 项目版本展示统一更新到 `V0.2.7 / 0.2.7`。
+- `/api/v1/admin/retention` 非法数字输入从 500 改为 422。
+- `/api/v1/collection/jobs/{job_id}/log` 仍返回 `text/plain`，但大日志只返回尾部内容并带截断提示。
+
+### 验证 / Verification
+
+- 后端：`.venv/bin/python -m unittest discover -s tests`，95 个测试通过。
+- 前端：`npm test`，1 个测试文件、11 个用例通过。
+- 构建：`npm run build` 通过。
+
 ## [V0.2.6] - 2026-05-30
 
 ### 变更 / Changed

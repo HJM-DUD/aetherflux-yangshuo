@@ -1,7 +1,68 @@
 # 🐛 AetherFlux 调试与审查日志
 
 > **规则**：此文件由 GuGU 手动要求更新。记录每次代码审查、重大修改、发现的问题和后续计划。
-> **最后更新**：2026-05-30 | V0.2.6
+> **最后更新**：2026-05-31 | V0.2.7
+
+---
+
+## 2026-05-31 — V0.2.7 代码审查修补落地
+
+### 执行人
+Codex (主脑) + Hermes (DeepSeek v4-pro) + Antigravity (Gemini 3.5 Flash Medium)
+
+---
+
+### 一、本轮目标
+
+**定位**：V0.2.7 是代码审查修补版本，不做大重构、不删除旧模块、不改变采集产品路线。
+
+**修补优先级**：
+1. P0：修复会直接崩溃或让功能失败的问题。
+2. P1：修复安全脱敏、资料包索引、日志 OOM、接口健壮性。
+3. P2：修复后台任务超时、SQLite 锁等待、前端轮询等稳定性问题。
+4. P3：同步版本号、文档和验证记录。
+
+---
+
+### 二、已修补问题
+
+| 优先级 | 问题 | 文件 | 状态 |
+|--------|------|------|------|
+| P0 | package 内联脚本使用 `os.environ` 但未导入 `os` | `aetherflux/admin_api.py` | 已修 |
+| P0 | `_mlx_whisper_cli()` 引用未定义 `fallback` | `aetherflux_agentCLI/aetherflux_agentcli/media_asr.py` | 已修 |
+| P1 | SQLite 新业务连接未设置 `busy_timeout` | `aetherflux/storage.py` | 已修 |
+| P1 | 任务日志接口一次性读取整文件 | `aetherflux/admin_api.py` | 已修 |
+| P1 | retention 配置非法输入会触发 500 | `aetherflux/admin_api.py` | 已修 |
+| P1 | `_safe_payload` 存在真实 token 漏检和普通文本误杀 | `aetherflux/admin_api.py` | 已修 |
+| P1 | 资料包只落盘，SQLite 元数据不会自动索引 | `aetherflux/admin_api.py` / `storage.py` | 已修 |
+| P2 | 后台采集子进程 `wait()` 无总超时 | `aetherflux/admin_api.py` | 已修 |
+| P2 | 采集操作台无活跃任务仍 5 秒轮询 | `web-admin/src/App.tsx` | 已修 |
+
+### 三、本次新增验证覆盖
+
+- package 脚本执行不再因缺 `os` 报 `NameError`。
+- ASR 依赖探测在 `mlx_whisper` 命令缺失时不抛异常。
+- 日志接口只返回尾部内容并能处理无效 UTF-8。
+- retention 非法输入返回 422。
+- URL 敏感 query 被剥离，普通业务文本里的 `secret/token` 不误删，真实 `Bearer` token 被脱敏。
+- `/api/v1/daily-bundles` 查询前同步 inbox manifest。
+- SQLite 新连接 `busy_timeout=5000`。
+- 前端无活跃任务时 30 秒轮询，有活跃任务时 5 秒轮询。
+
+### 四、验证结果
+
+- `.venv/bin/python -m unittest discover -s tests`：95 个测试通过。
+- `npm test`：1 个前端测试文件、11 个用例通过。
+- `npm run build`：TypeScript + Vite 生产构建通过。
+
+---
+
+### 五、执行边界
+
+- 不执行物理删除，不使用批量/递归删除命令。
+- 不把 V0.2.7 做成架构大重构；`bundle.py`、`paths.py`、ASR 公共化延后。
+- 不移除 `server.py` / `legacy-serve`，仅维持旧入口备用状态。
+- 先更新 `CHANGELOG.md` 和 `DEBUG_LOG.md`，再压缩上下文并执行代码修补。
 
 ---
 
@@ -108,4 +169,3 @@ Codex (主脑) + Hermes (DeepSeek v4-pro) + Antigravity (Gemini 3.1 Pro)
 编译：全部通过 ✅
 单元测试：89/89 通过 ✅
 ```
-

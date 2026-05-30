@@ -1,3 +1,3 @@
-"""AetherFlux V0.2.5 shellCLI collector project."""
+"""AetherFlux V0.2.7 shellCLI collector project."""
 
-__version__ = "0.2.5"
+__version__ = "0.2.7"

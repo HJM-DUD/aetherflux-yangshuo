@@ -61,8 +61,8 @@ def main() -> None:
 
     serve = subcommands.add_parser(
         "serve",
-        help="Run V0.2.4 FastAPI admin backend",
-        description="Run V0.2.4 FastAPI admin backend on 127.0.0.1 by default.",
+        help="Run V0.2.7 FastAPI admin backend",
+        description="Run V0.2.7 FastAPI admin backend on 127.0.0.1 by default.",
     )
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=DEFAULT_DASHBOARD_PORT)

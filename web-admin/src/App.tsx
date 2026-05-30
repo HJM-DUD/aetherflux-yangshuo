@@ -96,7 +96,7 @@ type Config = {
 };
 
 const defaultSummary: Summary = {
-  version: "V0.2.4",
+  version: "V0.2.7",
   counts: {
     candidates: 0,
     approved: 0,
@@ -387,6 +387,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
 
   const counts = summary.counts || defaultSummary.counts || {};
+  const hasActiveCollectionJobs = jobs.some((job) => ["queued", "running", "cancelling"].includes(String(job.status || "")));
 
   useEffect(() => {
     void refreshAll();
@@ -426,12 +427,13 @@ export default function App() {
 
   useEffect(() => {
     if (activePage !== "collection-console") return;
+    const refreshIntervalMs = hasActiveCollectionJobs ? 5000 : 30000;
     const timer = window.setInterval(() => {
       void fetchJobs();
       if (selectedJobId) void fetchJobLog(selectedJobId);
-    }, 5000);
+    }, refreshIntervalMs);
     return () => window.clearInterval(timer);
-  }, [activePage, selectedJobId]);
+  }, [activePage, hasActiveCollectionJobs, selectedJobId]);
 
   useEffect(() => {
     const pageCount = Math.max(1, Math.ceil(jobs.length / jobPageSize));
@@ -758,7 +760,7 @@ export default function App() {
           {!sidebarCollapsed && (
             <div className="min-w-0">
               <p className="truncate text-sm font-bold">{languageMode === "zh" ? "以太通量后台" : "AetherFlux Admin"}</p>
-              <p className="truncate text-xs text-muted-foreground">AetherFlux · {summary.version || "V0.2.4"}</p>
+              <p className="truncate text-xs text-muted-foreground">AetherFlux · {summary.version || "V0.2.7"}</p>
             </div>
           )}
         </div>
@@ -1229,7 +1231,7 @@ export default function App() {
               {/* Header with GitHub links */}
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4">
                 <div className="flex items-center gap-3">
-                  <span className="rounded-md bg-primary px-2.5 py-1 text-xs font-black text-primary-foreground">{releaseStatus.current_version || "V0.2.4"}</span>
+                  <span className="rounded-md bg-primary px-2.5 py-1 text-xs font-black text-primary-foreground">{releaseStatus.current_version || "V0.2.7"}</span>
                   <span className="text-sm text-muted-foreground">当前版本 · 基于 CHANGELOG.md 同步</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1768,7 +1770,7 @@ function GlobalSettingsPage({
         <h3 className="text-sm font-bold text-muted-foreground">{isZh ? "关于" : "About"}</h3>
         <div className="overflow-hidden rounded-lg border border-border bg-card">
           <SettingsRow icon={<Info className="h-5 w-5" />} title={isZh ? "版本" : "Version"}>
-            <span className="text-sm font-semibold text-muted-foreground">{releaseStatus.version || "V0.2.4"}</span>
+            <span className="text-sm font-semibold text-muted-foreground">{releaseStatus.current_version || releaseStatus.version || "V0.2.7"}</span>
           </SettingsRow>
           <SettingsRow
             description={isZh ? "本后台只监听本机地址；自动审议，不自动发布；原始证据不上传 Supabase。" : "Local-only admin. Automated review does not publish. Raw evidence is not uploaded to Supabase."}

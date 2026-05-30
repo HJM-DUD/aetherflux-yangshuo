@@ -20,7 +20,7 @@ class AgentCommandTemplate:
 
 def default_agent_payload(role: str, observation: Mapping[str, Any], allowed_actions: List[str]) -> Dict[str, Any]:
     return {
-        "version": "0.2.5",
+        "version": "0.2.7",
         "role": role,
         "instruction": "你是 agentCLI 的主导采集 agent。请只返回一个 JSON object，不要 Markdown，不要解释文字，不要代码块。若允许继续公开采集，decision=APPROVED；遇到登录、验证码、账号设置、发布、支付、删除、上传，decision=NEED_HUMAN。",
         "observation": dict(observation),

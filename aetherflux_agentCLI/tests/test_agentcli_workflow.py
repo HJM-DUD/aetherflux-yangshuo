@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from aetherflux_agentcli.agent_adapter import AgentCommandTemplate
 from aetherflux_agentcli.bundle import BundleWriter, copy_bundle_to_inbox
@@ -31,7 +32,7 @@ class AgentCLIWorkflowTests(unittest.TestCase):
             manifest = json.loads((bundle.path / "manifest.json").read_text(encoding="utf-8"))
             asr_lines = (bundle.path / "asr_results.jsonl").read_text(encoding="utf-8").splitlines()
 
-            self.assertEqual(manifest["version"], "0.2.5")
+            self.assertEqual(manifest["version"], "0.2.7")
             self.assertEqual(manifest["mode"], "agentCLI")
             self.assertEqual(manifest["counts"]["raw_items"], 1)
             self.assertEqual(json.loads(asr_lines[0])["transcript_ref"], "transcripts/dy-1.txt")
@@ -358,6 +359,14 @@ class AgentCLIWorkflowTests(unittest.TestCase):
 
         self.assertEqual(select_asr_backend("auto", deps), "mlx_whisper_cli")
         self.assertEqual(select_asr_backend("mlx_whisper", deps), "mlx_whisper_cli")
+
+    def test_dependency_status_does_not_crash_when_mlx_whisper_cli_is_missing(self):
+        with patch("aetherflux_agentcli.media_asr.shutil.which", return_value=None), patch(
+            "aetherflux_agentcli.media_asr._module_exists", return_value=False
+        ):
+            status = dependency_status()
+
+        self.assertFalse(status["mlx_whisper_cli"])
 
     def test_information_value_marks_music_like_video_low_value(self):
         value = classify_information_value(

@@ -318,7 +318,7 @@ def _screen_items(items: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
                 "title": item.get("title"),
                 "decision": "APPROVED",
                 "decision_source": "shellcli_rules",
-                "reason": "标题可用，进入 V0.2.5 初筛结果。",
+                "reason": "标题可用，进入 V0.2.7 初筛结果。",
             }
         )
     return screened

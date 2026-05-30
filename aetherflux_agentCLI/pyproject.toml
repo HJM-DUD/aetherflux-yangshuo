@@ -1,7 +1,7 @@
 [project]
 name = "aetherflux-agentcli"
-version = "0.2.5"
-description = "AetherFlux V0.2.5 agent-led autonomous collector workflow."
+version = "0.2.7"
+description = "AetherFlux V0.2.7 agent-led autonomous collector workflow."
 requires-python = ">=3.9"
 
 [project.scripts]

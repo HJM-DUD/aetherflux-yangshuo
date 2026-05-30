@@ -10,7 +10,7 @@ from .collector import AgentCollectionConfig, load_config, plan_supported_tasks,
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="AetherFlux V0.2.5 agentCLI crawler")
+    parser = argparse.ArgumentParser(description="AetherFlux V0.2.7 agentCLI crawler")
     subcommands = parser.add_subparsers(dest="command", required=True)
     for name in ("run", "scheduler-hook", "backend-hook"):
         command = subcommands.add_parser(name)

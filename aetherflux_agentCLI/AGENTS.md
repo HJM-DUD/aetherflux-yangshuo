@@ -4,7 +4,7 @@ GuGU 对编程只是略懂皮毛，回复要尽量中文、直接、少术语。
 
 ## 子项目定位
 
-这是 V0.2.5 的 agentCLI 采集子项目：agent 掌握控制流，OpenCLI 或本地脚本只提供工具。它必须能独立运行，并产出与 shellCLI 相同契约的每日资料包。
+这是 V0.2.7 的 agentCLI 采集子项目：agent 掌握控制流，OpenCLI 或本地脚本只提供工具。它必须能独立运行，并产出与 shellCLI 相同契约的每日资料包。
 
 ## 安全规则
 
@@ -33,7 +33,7 @@ GuGU 对编程只是略懂皮毛，回复要尽量中文、直接、少术语。
 - 删除
 - 上传私有文件
 
-## 当前状态（V0.2.5，2026-05-30）
+## 当前状态（V0.2.7，2026-05-31）
 
 - `cli.py`：已接入真实采集入口（`run`/`scheduler-hook`/`backend-hook`），支持 `--platforms`、`--queries`、`--stage`、`--no-sleep`。
 - `collector.py`：已实现 agent 主导 + OpenCLI 辅助的真实采集；小红书会点击 `筛选`/`最新`/`一天内`，抖音优先使用 `sort_type=2&publish_time=1`，并在每个平台任务后关闭 browser session。

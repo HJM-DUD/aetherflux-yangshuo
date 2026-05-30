@@ -4,7 +4,7 @@ GuGU 对编程只是略懂皮毛，回复要尽量中文、直接、少术语。
 
 ## 子项目定位
 
-这是 V0.2.5 的 shellCLI 采集子项目：脚本和 OpenCLI 掌握控制流，agent 只做监工、筛选、日志诊断和 ASR 深处理判断。它必须能独立运行，并产出与 agentCLI 相同契约的每日资料包。
+这是 V0.2.7 的 shellCLI 采集子项目：脚本和 OpenCLI 掌握控制流，agent 只做监工、筛选、日志诊断和 ASR 深处理判断。它必须能独立运行，并产出与 agentCLI 相同契约的每日资料包。
 
 ## 安全规则
 
@@ -20,7 +20,7 @@ GuGU 对编程只是略懂皮毛，回复要尽量中文、直接、少术语。
 - `scheduler-hook` 留给定时任务。
 - `backend-hook` 留给主项目 Web 后台按钮。
 - Hermes 当前只是默认监工 agent，可通过 `config/agents.json` 替换。
-- 视频号在 V0.2.5 默认禁用，不允许制造假成功。
+- 视频号在 V0.2.7 默认禁用，不允许制造假成功。
 - 真实采集前必须经过 `opencli doctor`；如果 OpenCLI Browser Bridge 没通，停止，不写假成功资料包。
 
 ## 最新修复（V0.2.5 三方审查，2026-05-30）

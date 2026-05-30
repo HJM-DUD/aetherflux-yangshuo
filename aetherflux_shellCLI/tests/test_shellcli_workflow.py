@@ -38,7 +38,7 @@ class ShellCLIWorkflowTests(unittest.TestCase):
             manifest = json.loads((bundle.path / "manifest.json").read_text(encoding="utf-8"))
             raw_lines = (bundle.path / "raw_items.jsonl").read_text(encoding="utf-8").splitlines()
 
-            self.assertEqual(manifest["version"], "0.2.5")
+            self.assertEqual(manifest["version"], "0.2.7")
             self.assertEqual(manifest["mode"], "shellCLI")
             self.assertEqual(manifest["bundle_date"], "2026-05-30")
             self.assertEqual(manifest["counts"]["raw_items"], 1)
@@ -74,7 +74,7 @@ class ShellCLIWorkflowTests(unittest.TestCase):
 
         self.assertEqual([task["platform"] for task in tasks], ["xiaohongshu", "douyin"])
         self.assertEqual(errors[0]["platform"], "shipinghao")
-        self.assertEqual(errors[0]["status"], "disabled_unsupported_v025")
+        self.assertEqual(errors[0]["status"], "disabled_unsupported_v027")
 
     def test_agent_command_template_renders_structured_json_payload(self):
         template = AgentCommandTemplate(
