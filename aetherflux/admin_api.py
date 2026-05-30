@@ -83,8 +83,11 @@ class CollectionConfigPayload(BaseModel):
 
 
 class CollectionJobRequest(BaseModel):
-    platform: str
-    stage: str = "titles"
+    platform: str = "all"
+    stage: str = "all"
+    mode: str = "shellCLI"
+    action: str = "collect"
+    run_mode: str = "manual"
     dry_run: bool = False
 
 
@@ -194,6 +197,7 @@ def create_app(store: IntelligenceStore, project_root: Path | str = ".") -> Fast
             job["started_at"] = _utc_now()
             job["ended_at"] = _utc_now()
             job["exit_code"] = 0
+            job["log_size_bytes"] = Path(job["log_path"]).stat().st_size if Path(job["log_path"]).exists() else 0
             store.save_admin_job(job)
             return _safe_payload(job)
         # Async: spawn background thread, return immediately
@@ -508,30 +512,172 @@ def _load_latest_artifact(artifact_dir: Path, *globs: str) -> Dict[str, Any]:
 def _build_job(payload: CollectionJobRequest, root: Path) -> Dict[str, Any]:
     job_id = f"job-{uuid.uuid4().hex[:12]}"
     log_path = root / "logs" / "admin" / f"{job_id}.log"
-    command = [
-        sys.executable,
-        "-m",
-        "aetherflux.cli",
-        "opencli-rotate",
-        "--stage",
-        payload.stage,
-        "--log-dir",
-        str(root / "logs" / "opencli" / "live"),
-        "--output-dir",
-        str(root / "artifacts" / "opencli" / "live"),
-    ]
+    command, cwd = _build_collection_command(payload, root)
     if payload.dry_run:
         command.append("--dry-run")
     return {
         "id": job_id,
         "platform": payload.platform,
         "stage": payload.stage,
+        "mode": payload.mode,
+        "action": payload.action,
+        "run_mode": payload.run_mode,
         "status": "queued",
         "dry_run": payload.dry_run,
         "command": command,
+        "cwd": str(cwd),
         "log_path": str(log_path),
         "created_at": _utc_now(),
     }
+
+
+def _build_collection_command(payload: CollectionJobRequest, root: Path) -> tuple[List[str], Path]:
+    mode = payload.mode
+    action = payload.action
+    inbox = root / "data" / "daily_bundles_inbox"
+    if mode == "shellCLI":
+        subproject = root / "aetherflux_shellCLI"
+        if action == "auto_pipeline":
+            return (_auto_pipeline_command("aetherflux_shellcli", "shellCLI", inbox), subproject)
+        if action == "collect":
+            return (
+                [
+                    sys.executable,
+                    "-m",
+                    "aetherflux_shellcli.cli",
+                    "backend-hook",
+                    "--config",
+                    "config/collect.json",
+                    "--stage",
+                    "all",
+                    "--bundle-root",
+                    "data/daily_bundles",
+                    "--main-inbox",
+                    str(inbox),
+                ],
+                subproject,
+            )
+        if action == "package":
+            return (_bundle_command("aetherflux_shellcli", "shellCLI", inbox), subproject)
+        if action == "clean":
+            return (_safe_clean_command("shellCLI", subproject), subproject)
+        if action == "manual_web":
+            return (_manual_web_command("shellCLI", subproject), subproject)
+        raise HTTPException(status_code=400, detail=f"unsupported shellCLI action: {action}")
+    if mode == "agentCLI":
+        subproject = root / "aetherflux_agentCLI"
+        if action == "auto_pipeline":
+            return (_auto_pipeline_command("aetherflux_agentcli", "agentCLI", inbox), subproject)
+        if action == "collect":
+            return (
+                [
+                    sys.executable,
+                    "-m",
+                    "aetherflux_agentcli.cli",
+                    "backend-hook",
+                    "--bundle-root",
+                    "data/daily_bundles",
+                    "--main-inbox",
+                    str(inbox),
+                ],
+                subproject,
+            )
+        if action == "package":
+            return (_bundle_command("aetherflux_agentcli", "agentCLI", inbox), subproject)
+        if action == "clean":
+            return (_safe_clean_command("agentCLI", subproject), subproject)
+        if action == "manual_web":
+            return (_manual_web_command("agentCLI", subproject), subproject)
+        raise HTTPException(status_code=400, detail=f"unsupported agentCLI action: {action}")
+    raise HTTPException(status_code=400, detail=f"unsupported collection mode: {mode}")
+
+
+def _manual_web_command(mode: str, subproject: Path) -> List[str]:
+    message = (
+        f"{mode} 手动网页启动已登记。子项目路径：{subproject}。"
+        "请在对应子项目或浏览器内完成手动网页采集，后台保留任务包记录。"
+    )
+    return [sys.executable, "-c", f"print({message!r})"]
+
+
+def _safe_clean_command(mode: str, subproject: Path) -> List[str]:
+    script = (
+        "from pathlib import Path\n"
+        "root = Path.cwd()\n"
+        "targets = [root / 'data', root / 'artifacts', root / 'logs']\n"
+        "files = [p for target in targets if target.exists() for p in target.rglob('*') if p.is_file()]\n"
+        "size = sum(p.stat().st_size for p in files)\n"
+        f"print('清理扫描完成：{mode}；未执行物理删除。')\n"
+        "print(f'扫描文件数：{len(files)}')\n"
+        "print(f'占用磁盘：{size} bytes')\n"
+    )
+    return [sys.executable, "-c", script]
+
+
+def _bundle_command(package_name: str, mode: str, inbox: Path) -> List[str]:
+    return [sys.executable, "-c", _bundle_script_body(package_name, mode, inbox)]
+
+
+def _auto_pipeline_command(package_name: str, mode: str, inbox: Path) -> List[str]:
+    if mode == "shellCLI":
+        collect_args = [
+            sys.executable,
+            "-m",
+            "aetherflux_shellcli.cli",
+            "backend-hook",
+            "--config",
+            "config/collect.json",
+            "--stage",
+            "all",
+            "--bundle-root",
+            "data/daily_bundles",
+            "--main-inbox",
+            str(inbox),
+        ]
+    else:
+        collect_args = [
+            sys.executable,
+            "-m",
+            "aetherflux_agentcli.cli",
+            "backend-hook",
+            "--bundle-root",
+            "data/daily_bundles",
+            "--main-inbox",
+            str(inbox),
+        ]
+    script = (
+        "import subprocess\n"
+        "from pathlib import Path\n"
+        "print('第一步：启动采集任务')\n"
+        f"subprocess.run({collect_args!r}, check=True)\n"
+        "print('第二步：清理扫描开始（不执行物理删除）')\n"
+        "root = Path.cwd()\n"
+        "targets = [root / 'data', root / 'artifacts', root / 'logs']\n"
+        "files = [p for target in targets if target.exists() for p in target.rglob('*') if p.is_file()]\n"
+        "size = sum(p.stat().st_size for p in files)\n"
+        "print(f'清理扫描完成：文件数={len(files)}；占用={size} bytes；物理删除=否')\n"
+        "print('第三步：生成当日资料包')\n"
+        + _bundle_script_body(package_name, mode, inbox)
+    )
+    return [sys.executable, "-c", script]
+
+
+def _bundle_script_body(package_name: str, mode: str, inbox: Path) -> str:
+    return (
+        "from datetime import datetime, timezone\n"
+        "import uuid\n"
+        f"from {package_name}.bundle import BundleWriter, copy_bundle_to_inbox\n"
+        "bundle_date = datetime.now(timezone.utc).date().isoformat()\n"
+        "run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:6]\n"
+        f"bundle = BundleWriter('data/daily_bundles', mode={mode!r}, node_id='local-admin').create_bundle(\n"
+        "    bundle_date=bundle_date,\n"
+        "    run_id=run_id,\n"
+        "    mission={'place': '阳朔', 'industry': '旅游', 'source': 'web-admin-package'},\n"
+        "    raw_items=[], screened_items=[], asr_results=[], agent_decisions=[], errors=[])\n"
+        f"copied = copy_bundle_to_inbox(bundle.path, {str(inbox)!r})\n"
+        "print(f'资料包已生成：{bundle.path}')\n"
+        "print(f'已复制到智脑入口：{copied}')\n"
+    )
 
 
 def _run_job_sync(job: Dict[str, Any], store: IntelligenceStore) -> None:
@@ -546,7 +692,7 @@ def _run_job_sync(job: Dict[str, Any], store: IntelligenceStore) -> None:
     with log_path.open("w", encoding="utf-8") as handle:
         process = subprocess.Popen(
             job["command"],
-            cwd=str(Path.cwd()),
+            cwd=str(job.get("cwd") or Path.cwd()),
             text=True,
             stdout=handle,
             stderr=subprocess.STDOUT,
@@ -557,6 +703,7 @@ def _run_job_sync(job: Dict[str, Any], store: IntelligenceStore) -> None:
         return_code = process.wait()
     job["ended_at"] = _utc_now()
     job["exit_code"] = return_code
+    job["log_size_bytes"] = log_path.stat().st_size if log_path.exists() else 0
     latest = store.get_admin_job(str(job["id"]))
     if latest.get("status") in {"cancelling", "cancelled"}:
         job["status"] = "cancelled"

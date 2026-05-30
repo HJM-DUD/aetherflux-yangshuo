@@ -1,4 +1,4 @@
-# AGENTS.md — 以太通量 / AetherFlux 项目记忆（V0.2.4）
+# AGENTS.md — 以太通量 / AetherFlux 项目记忆（V0.2.5）
 
 > **读者**：这是给 Codex 看的项目记忆文件。Codex 每次对话都会读取它，用来理解项目是什么、怎么分层、每个文件干什么。
 
@@ -8,7 +8,7 @@
 
 - **中文名**：以太通量 / 目录名：`AetherFlux_yitaitongliang`
 - **当前子项目**：旅游情报决策系统
-- **版本**：V0.2.4（2026-05-29）
+- **版本**：V0.2.5（2026-05-30）
 - **定位**：服务 GuGU 自己做内容选题、项目判断、风险识别、交叉验证、线上运营和后续 agent 决策。**不是游客攻略站，不是对外 SaaS。**
 - **技术栈**：Python 3.9+ / FastAPI + React/Vite + Tailwind + SQLite / OpenCLI Browser Bridge
 - **总目标**：最终做成 GuGU 自用的大型 agent 应用；外部人员只通过另行设计的 Web 端使用，不直接维护本机 Triagent 系统。
@@ -22,6 +22,15 @@
 5. **线下经营智控**：后续。管理客户、行程、成本、资源和经营执行，例如旅游行业的行程规划、报价与履约控制。
 
 V0.2.x 不要把第二到第五部分硬做成假功能，只需要为它们保留清晰接口、数据结构和页面入口。第一部分的数据量和质量是后续四部分的地基。
+
+### V0.2.5 双模式采集子项目
+
+- `aetherflux_shellCLI`：脚本和 OpenCLI 主导采集，agent 做监工、筛选和诊断。
+- `aetherflux_agentCLI`：agent 主导采集，OpenCLI 或脚本作为辅助工具。
+- 两个子项目都必须可独立运行，并输出相同契约的每日资料包。
+- 每日资料包本地保留一份；需要给主项目消费时，复制到 `data/daily_bundles_inbox/{mode}/{date}/{run_id}/`。
+- 产品运行时的 agent 能力不依赖 Triagent；Hermes 只是默认 agent，通过各子项目 `config/agents.json` 命令模板替换。
+- 视频号在 V0.2.5 只保留默认禁用占位，不进入真实采集队列。
 
 ### Web 与权重原则
 
@@ -58,7 +67,7 @@ Codex 是主脑，Hermes（DeepSeek）和 Antigravity（Gemini）是子 agent。
 
 ---
 
-## 4. 架构分层（V0.2.4 实际文件映射）
+## 4. 架构分层（V0.2.5 实际文件映射）
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -96,6 +105,10 @@ Codex 是主脑，Hermes（DeepSeek）和 Antigravity（Gemini）是子 agent。
 │  Frontend（前端）                                 │
 │  web/                 V0.1 旧静态 HTML/CSS/JS      │
 │  web-admin/           V0.2.4 React/Vite + shadcn   │
+├─────────────────────────────────────────────────┤
+│  V0.2.5 Collector Subprojects（双模式采集子项目） │
+│  aetherflux_shellCLI/ OpenCLI/脚本主导 + agent监工│
+│  aetherflux_agentCLI/ agent主导 + OpenCLI辅助     │
 ├─────────────────────────────────────────────────┤
 │  CLI & Pipeline（入口）                           │
 │  cli.py               命令入口                     │
@@ -159,7 +172,7 @@ Codex 是主脑，Hermes（DeepSeek）和 Antigravity（Gemini）是子 agent。
 
 | 命令 | 说明 |
 |------|------|
-| `python3 -m aetherflux.cli serve` | 启动 V0.2.4 FastAPI 后台（默认 127.0.0.1:8788） |
+| `python3 -m aetherflux.cli serve` | 启动 V0.2.5 FastAPI 后台（默认 127.0.0.1:8788） |
 | `python3 -m aetherflux.cli legacy-serve` | V0.1 旧静态后台（备用） |
 | `python3 -m aetherflux.cli ingest` | 样本采集与评分 |
 | `python3 -m aetherflux.cli review` | 生成审议草稿 |
@@ -202,9 +215,9 @@ DeepSeek 配置：`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL_ADV
 
 ---
 
-## 9. 当前限制（V0.2.4）
+## 9. 当前限制（V0.2.5）
 
-- 视频号无稳定网页端内容入口，暂时跳过。
+- 视频号无稳定网页端内容入口，V0.2.5 仅保留禁用占位，不进入真实采集队列。
 - 小红书/抖音采集依赖 OpenCLI Browser Bridge + Chrome 登录态，采集稳定性仍在打磨。
 - `data/seed_items.json` 只是样本输入，不是真实平台采集器。
 - PC worker 部署方案未完成。

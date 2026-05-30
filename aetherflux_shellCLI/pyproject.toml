@@ -1,0 +1,11 @@
+[project]
+name = "aetherflux-shellcli"
+version = "0.2.5"
+description = "AetherFlux V0.2.5 shell/OpenCLI-led collector workflow."
+requires-python = ">=3.9"
+
+[project.scripts]
+aetherflux-shellcli = "aetherflux_shellcli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["aetherflux_shellcli*"]

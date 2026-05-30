@@ -1,0 +1,11 @@
+{
+  "default_agent": "hermes",
+  "agents": {
+    "hermes": {
+      "role": "collector_supervisor",
+      "command": ["hermes", "-z", "{payload}", "--provider", "deepseek", "--model", "deepseek-v4-pro"],
+      "timeout_seconds": 300,
+      "expects_json": true
+    }
+  }
+}
