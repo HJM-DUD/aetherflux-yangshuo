@@ -21,6 +21,16 @@
 - 新增 `config/agents.json` 命令模板方式，Hermes 暂作默认 agent，但可替换为其他本地 agent。
 - 新增两个子项目专用 Codex skill，分别固化 shellCLI 监工流程和 agentCLI 自主采集流程。
 
+### 修复 / Fixed（Codex + Hermes + Antigravity 三方审查）
+
+- **P2 浏览器 session 泄漏**：`collector.py` 中 `_run_sequence` 未捕获 `TimeoutExpired`/`FileNotFoundError`，task 循环未用 `try/finally`，导致 OpenCLI 异常时浏览器 session 残留。修复：`_run_sequence` 内加异常捕获返回 error dict，task 循环加 `try/finally` 确保 `_close_browser_session` 总执行。
+
+- **P1 配置传递链断开**：Web 后台选了平台/关键词，但 `_build_collection_command` 不读 `payload.platform`，shellCLI CLI 无 `--platforms/--queries` 参数，采集永远用子项目 `collect.json` 默认值。同时存在配置双重存储（主项目 `live_collect.json` vs 子项目 `collect.json`）和 `CollectionJobRequest` 缺少 `queries` 字段。修复：打通前端 → API → CLI → collector 的 platforms/queries/override 全链路，`PUT config` 时 `_sync_collect_json` 同步子项目配置文件。
+
+- **P1 package 生成空资料包**：`_bundle_script_body` 传空数组创建空 bundle，`auto_pipeline` 第三步新建空包进入 inbox。修复：`_bundle_command` 改为 `_copy_latest_bundle_script`，查找最近真实 bundle，`raw_items=0` 时跳过打包。
+
+- **UX 关键词为空无拦截**（Antigravity 发现）：前端 `startCollectionJob` 未检查关键词是否为空。修复：加关键词为空前置拦截 + fetch body 传 `queries` 字段。
+
 ### 安全 / Security
 
 - agentCLI 高度自主但设硬边界：登录、验证码、账号设置、发布、支付、删除、上传私有文件等动作必须停止并请求 GuGU。
@@ -30,6 +40,8 @@
 
 - 新增 `aetherflux_shellCLI/tests/test_shellcli_workflow.py`，覆盖每日资料包、主项目 inbox 复制、视频号禁用占位、agent 命令模板和 CLI 钩子。
 - 新增 `aetherflux_agentCLI/tests/test_agentcli_workflow.py`，覆盖每日资料包、主项目 inbox 复制、自主动作安全拦截、agent 命令模板和 CLI 钩子。
+- 修复后全量测试 46/46 通过（shellCLI 15 + agentCLI 6 + admin API 15 + 前端 10）。
+- 修复经过 Codex + Hermes + Antigravity 三方交叉审查，一致确认通过。
 
 ## [V0.2.4] - 2026-05-29
 
