@@ -92,8 +92,13 @@ beforeEach(() => {
               id: `job-${index + 1}`,
               platform: index % 2 === 0 ? "xiaohongshu" : "douyin",
               stage: index === 0 ? "all" : index === 1 ? "videos" : "titles",
+              mode: index % 2 === 0 ? "shellCLI" : "agentCLI",
+              action: index === 0 ? "collect" : index === 1 ? "package" : "clean",
               status: index === 0 ? "running" : "succeeded",
-              dry_run: false
+              dry_run: false,
+              started_at: "2026-05-30T08:00:00Z",
+              log_size_bytes: 2048,
+              items_collected: index === 0 ? 31 : 0
             }))
           })
       });
@@ -141,19 +146,31 @@ describe("V0.2.4 admin app", () => {
 
     expect(screen.getByRole("heading", { name: "以太情报后台" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "采集优先的阳朔旅游情报后台" })).not.toBeInTheDocument();
-    expect(screen.getByText("自动审议，不自动发布")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "采集操作台" })).toBeInTheDocument();
-    expect(screen.getAllByText("完整采集流程").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
-    expect(screen.getByText("运行中")).toBeInTheDocument();
+    expect(screen.getByText("采集目标")).toBeInTheDocument();
+    expect(screen.getAllByText("采集模式一（脚本主导）").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("采集模式二（Agent主导）").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "网页手动启动" }).length).toBe(2);
+    expect(screen.getAllByRole("button", { name: "启动采集" }).length).toBe(2);
+    expect(screen.getAllByRole("button", { name: "停止" }).length).toBeGreaterThan(1);
+    expect(screen.getByText("清理数据")).toBeInTheDocument();
+    expect(screen.getByText("生成资料包")).toBeInTheDocument();
+    expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
     expect(screen.getAllByText("已完成").length).toBeGreaterThan(0);
     expect(screen.queryByText("当前阶段")).not.toBeInTheDocument();
     expect(screen.queryByText("running")).not.toBeInTheDocument();
     expect(screen.queryByText("succeeded")).not.toBeInTheDocument();
     expect(screen.queryByText("Dry-run")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "启动完整采集流程" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "采集标题池" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "机会风险初筛" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "视频语音处理" })).not.toBeInTheDocument();
+    expect(screen.getByText("整体采集进度")).toBeInTheDocument();
+    expect(screen.getByText("正在执行采集任务")).toBeInTheDocument();
+    expect(screen.getByText("72%")).toHaveClass("text-emerald-500");
+    expect(screen.getByTestId("collection-progress-fill")).toHaveStyle({ width: "72%" });
+    expect(screen.getByText("候选情报").closest("section")).toHaveClass("min-h-[148px]", "overflow-hidden", "rounded-lg");
+    expect(screen.getByText("风险预警").nextElementSibling).toHaveClass("text-rose-600");
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "采集配置" }));
@@ -185,24 +202,100 @@ describe("V0.2.4 admin app", () => {
     expect(screen.queryByText("Freshness")).not.toBeInTheDocument();
   });
 
+  it("keeps the sidebar fixed, collapsible, grouped, and pins utility pages at the bottom", async () => {
+    await act(async () => {
+      render(<App />);
+    });
+
+    const sidebar = screen.getByTestId("admin-sidebar");
+    expect(sidebar).toHaveClass("sticky", "top-0", "h-dvh", "shrink-0");
+    expect(sidebar).not.toHaveClass("lg:sticky");
+    expect(screen.getByText("采集控制")).toBeInTheDocument();
+    expect(screen.getByText("情报处理")).toBeInTheDocument();
+    expect(screen.getByText("核验信源")).toBeInTheDocument();
+    expect(screen.getByText("输出接口")).toBeInTheDocument();
+    expect(screen.getByText("数据治理")).toBeInTheDocument();
+
+    const utilityNav = screen.getByTestId("sidebar-utility-nav");
+    expect(within(utilityNav).getByRole("button", { name: "系统诊断" })).toBeInTheDocument();
+    expect(within(utilityNav).getByRole("button", { name: "版本发布" })).toBeInTheDocument();
+    expect(within(utilityNav).getByRole("button", { name: "全局设置" })).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "折叠菜单" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "折叠菜单" }));
+    });
+
+    expect(sidebar).toHaveClass("w-[88px]");
+    expect(screen.queryByText("AetherFlux · V0.2.4")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开菜单" })).toBeInTheDocument();
+  });
+
+  it("moves appearance controls into global settings and supports English shell labels", async () => {
+    await act(async () => {
+      render(<App />);
+    });
+
+    expect(screen.queryByRole("button", { name: "浅色" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "全局设置" }));
+    });
+
+    expect(screen.getByRole("heading", { name: "全局设置" })).toBeInTheDocument();
+    expect(screen.getByText("外观")).toBeInTheDocument();
+    expect(screen.getByText("主题")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "浅色" })).toBeInTheDocument();
+    expect(screen.getByText("语言")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "English" })).toBeInTheDocument();
+    expect(screen.getByText("主题色")).toBeInTheDocument();
+    expect(screen.getByText("分析面板主颜色")).toBeInTheDocument();
+    expect(screen.getByText("关于")).toBeInTheDocument();
+    expect(screen.getAllByText("检查更新").length).toBeGreaterThan(0);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "English" }));
+    });
+
+    expect(screen.getByRole("heading", { name: "Global Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collection Console" })).toBeInTheDocument();
+    expect(screen.getByText("Theme")).toBeInTheDocument();
+    expect(localStorage.getItem("aetherflux-admin-language")).toBe("en");
+  });
+
   it("uses restrained color blocks and reserves red for true warnings", async () => {
     await act(async () => {
       render(<App />);
     });
 
+    // Badges now live in global settings
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "全局设置" }));
+    });
+
     expect(await screen.findByText("本机免登录")).toHaveClass("bg-emerald-600", "text-white");
     expect(screen.getByText("127.0.0.1")).toHaveClass("bg-primary", "text-primary-foreground");
-    expect(screen.getAllByText("小红书")[0]).toHaveClass("bg-primary", "text-primary-foreground");
-    expect(screen.getAllByText("♪").length).toBeGreaterThan(0);
-    expect(screen.getByText("运行中")).toHaveClass("bg-primary", "text-primary-foreground");
-    expect(screen.getByText("视频语音处理")).toHaveClass("bg-slate-100", "text-slate-800");
     expect(screen.getByText("自动审议，不自动发布")).toHaveClass("bg-white", "text-red-500");
     expect(screen.getByText("自动审议，不自动发布")).not.toHaveClass("border-red-500");
+
+    // Platform/status badges are on collection console
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "采集操作台" }));
+    });
+
+    expect(screen.getAllByText("小红书")[0]).toHaveClass("bg-primary", "text-primary-foreground");
+    expect(screen.getAllByText("♪").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("运行中")[0]).toHaveClass("bg-primary", "text-primary-foreground");
+    expect(screen.getByRole("button", { name: "语音转文字深处理" })).toBeInTheDocument();
   });
 
-  it("switches between light and dark themes from the header", async () => {
+  it("switches between light and dark themes from global settings", async () => {
     await act(async () => {
       render(<App />);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "全局设置" }));
     });
 
     expect(await screen.findByRole("button", { name: "浅色" })).toBeInTheDocument();
@@ -224,7 +317,7 @@ describe("V0.2.4 admin app", () => {
     expect(localStorage.getItem("aetherflux-admin-theme")).toBe("light");
   });
 
-  it("uses configured platforms and submits only the full live collection flow", async () => {
+  it("uses configured platforms and submits collection mode jobs with manual or automatic flow", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
     await act(async () => {
@@ -235,12 +328,35 @@ describe("V0.2.4 admin app", () => {
     expect(screen.getAllByText("抖音").length).toBeGreaterThan(0);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "启动完整采集流程" }));
+      fireEvent.click(screen.getAllByRole("button", { name: "启动采集" })[0]);
     });
 
     const jobPosts = fetchMock.mock.calls.filter(([url, init]) => String(url).includes("/api/v1/collection/jobs") && (init as RequestInit | undefined)?.method === "POST");
     expect(jobPosts).toHaveLength(1);
-    expect(JSON.parse(String((jobPosts[0][1] as RequestInit).body))).toMatchObject({ platform: "xiaohongshu,douyin", stage: "all", dry_run: false });
+    expect(JSON.parse(String((jobPosts[0][1] as RequestInit).body))).toMatchObject({
+      platform: "xiaohongshu,douyin",
+      stage: "all",
+      mode: "shellCLI",
+      action: "collect",
+      run_mode: "manual",
+      dry_run: false
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "自动执行" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "自动三步" })[1]);
+    });
+
+    const nextJobPosts = fetchMock.mock.calls.filter(([url, init]) => String(url).includes("/api/v1/collection/jobs") && (init as RequestInit | undefined)?.method === "POST");
+    expect(nextJobPosts).toHaveLength(2);
+    expect(JSON.parse(String((nextJobPosts[1][1] as RequestInit).body))).toMatchObject({
+      platform: "xiaohongshu,douyin",
+      mode: "agentCLI",
+      action: "auto_pipeline",
+      run_mode: "auto"
+    });
   });
 
   it("paginates the job queue and refreshes it every five seconds on the collection console", async () => {
@@ -249,14 +365,14 @@ describe("V0.2.4 admin app", () => {
     });
 
     const queue = await screen.findByTestId("collection-job-table");
-    expect(within(queue).getByText("job-1")).toBeInTheDocument();
-    expect(within(queue).queryByText("job-9")).not.toBeInTheDocument();
-    expect(screen.getByText(/第 1 \/ 2 页/)).toBeInTheDocument();
+    expect(within(queue).getByText("job-1…")).toBeInTheDocument();
+    expect(within(queue).queryByText("job-9…")).not.toBeInTheDocument();
+    expect(screen.getByText(/第 1\/2 页/)).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+      fireEvent.click(screen.getByRole("button", { name: "下页" }));
     });
-    expect(within(queue).getByText("job-9")).toBeInTheDocument();
+    expect(within(queue).getByText("job-9…")).toBeInTheDocument();
 
     const before = fetchMock.mock.calls.length;
     await act(async () => {

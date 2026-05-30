@@ -171,9 +171,71 @@ class V024AdminApiTests(unittest.TestCase):
         job = response.json()
         self.assertEqual(job["platform"], "xiaohongshu")
         self.assertEqual(job["stage"], "titles")
+        self.assertEqual(job["mode"], "shellCLI")
+        self.assertIn("aetherflux_shellcli.cli", " ".join(job["command"]))
+        self.assertNotIn("opencli-rotate", " ".join(job["command"]))
         self.assertIn(job["status"], ["queued", "running", "succeeded"])
         self.assertTrue(job["log_path"].endswith(".log"))
         self.assertNotIn("cookie", json.dumps(job).lower())
+
+    def test_collection_job_rejects_unknown_mode_instead_of_legacy_opencli_rotate(self):
+        response = self.client.post(
+            "/api/v1/collection/jobs",
+            json={"platform": "xiaohongshu", "stage": "all", "mode": "legacy", "dry_run": True},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_collection_job_can_target_shellcli_and_agentcli_hooks(self):
+        shell = self.client.post(
+            "/api/v1/collection/jobs",
+            json={
+                "platform": "xiaohongshu,douyin",
+                "stage": "all",
+                "mode": "shellCLI",
+                "action": "collect",
+                "run_mode": "manual",
+                "dry_run": True,
+            },
+        )
+        agent = self.client.post(
+            "/api/v1/collection/jobs",
+            json={
+                "platform": "xiaohongshu,douyin",
+                "stage": "all",
+                "mode": "agentCLI",
+                "action": "package",
+                "run_mode": "auto",
+                "dry_run": True,
+            },
+        )
+        auto = self.client.post(
+            "/api/v1/collection/jobs",
+            json={
+                "platform": "xiaohongshu,douyin",
+                "stage": "all",
+                "mode": "agentCLI",
+                "action": "auto_pipeline",
+                "run_mode": "auto",
+                "dry_run": True,
+            },
+        )
+
+        self.assertEqual(shell.status_code, 200)
+        self.assertEqual(agent.status_code, 200)
+        self.assertEqual(auto.status_code, 200)
+        shell_job = shell.json()
+        agent_job = agent.json()
+        auto_job = auto.json()
+        self.assertEqual(shell_job["mode"], "shellCLI")
+        self.assertEqual(shell_job["action"], "collect")
+        self.assertIn("aetherflux_shellcli.cli", " ".join(shell_job["command"]))
+        self.assertEqual(agent_job["mode"], "agentCLI")
+        self.assertEqual(agent_job["action"], "package")
+        self.assertIn("已打包最近资料包", " ".join(agent_job["command"]))
+        self.assertIn("第一步：启动采集任务", " ".join(auto_job["command"]))
+        self.assertIn("第三步：复制最近采集资料包到智脑入口", " ".join(auto_job["command"]))
+        self.assertFalse(shell_job.get("physical_delete_performed", False))
 
     def test_collection_job_detail_and_log_endpoints(self):
         """GET /api/v1/collection/jobs/{id} returns job; /log returns log content."""

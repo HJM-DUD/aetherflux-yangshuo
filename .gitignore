@@ -12,5 +12,8 @@ dist/
 !.env.example
 data/*.db
 data/*.db-*
+data/daily_bundles_inbox/
+aetherflux_shellCLI/data/daily_bundles/
+aetherflux_agentCLI/data/daily_bundles/
 logs/
 artifacts/

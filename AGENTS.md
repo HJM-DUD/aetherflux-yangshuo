@@ -1,4 +1,4 @@
-# AGENTS.md — 以太通量 / AetherFlux 项目记忆（V0.2.4）
+# AGENTS.md — 以太通量 / AetherFlux 项目记忆（V0.2.5）
 
 > **读者**：这是给 Codex 看的项目记忆文件。Codex 每次对话都会读取它，用来理解项目是什么、怎么分层、每个文件干什么。
 
@@ -8,7 +8,7 @@
 
 - **中文名**：以太通量 / 目录名：`AetherFlux_yitaitongliang`
 - **当前子项目**：旅游情报决策系统
-- **版本**：V0.2.4（2026-05-29）
+- **版本**：V0.2.5（2026-05-30）
 - **定位**：服务 GuGU 自己做内容选题、项目判断、风险识别、交叉验证、线上运营和后续 agent 决策。**不是游客攻略站，不是对外 SaaS。**
 - **技术栈**：Python 3.9+ / FastAPI + React/Vite + Tailwind + SQLite / OpenCLI Browser Bridge
 - **总目标**：最终做成 GuGU 自用的大型 agent 应用；外部人员只通过另行设计的 Web 端使用，不直接维护本机 Triagent 系统。
@@ -22,6 +22,33 @@
 5. **线下经营智控**：后续。管理客户、行程、成本、资源和经营执行，例如旅游行业的行程规划、报价与履约控制。
 
 V0.2.x 不要把第二到第五部分硬做成假功能，只需要为它们保留清晰接口、数据结构和页面入口。第一部分的数据量和质量是后续四部分的地基。
+
+### V0.2.5 双模式采集子项目
+
+| | shellCLI | agentCLI |
+|---|---|---|
+| **谁主导** | 固定脚本 + OpenCLI，预定义 JS eval 序列 | Agent（Hermes）观察页面 → 自主决策 → 安全闸门 → 执行 |
+| **Agent 角色** | 监工：采集后筛选、诊断、质量判断 | 主导者：全程决策采集策略 |
+| **适合场景** | 低成本日常定时采集，固定流程 | 复杂页面、异常处理、登录墙绕过、高价值线索深挖 |
+| **采集流程** | 打开搜索 → 点筛选 → 点最新 → 点一天内 → 滚动提取 | Observe-Plan-Act 循环：观察页面 → agent 决策 action → 执行 |
+| **稳定性** | 高，固定脚本结果可预期 | 灵活但依赖 agent 判断质量 |
+| **当前状态** | ✅ 已可用，真实采集小红书+抖音（collection.py 已实现） | ✅ 已接通真实采集（collector.py 已实现），Hermes 可替换；必须等待 Hermes 决策，不允许本地接管替 agent 做主导判断 |
+
+- 两个子项目都必须可独立运行，并输出相同契约的每日资料包（manifest.json + 5 个 jsonl 文件）。
+- 每日资料包本地保留一份；需要给主项目消费时，复制到 `data/daily_bundles_inbox/{mode}/{date}/{run_id}/`。
+- 产品运行时的 agent 能力不依赖 Triagent；Hermes 只是默认 agent，通过各子项目 `config/agents.json` 命令模板替换。
+- agentCLI 的 `stage=videos/all` 已接入 `media_asr.py`：优先通过 OpenCLI 详情页解析 `video.currentSrc` 下载视频，`yt-dlp` 作为备用；之后 `ffmpeg` 抽音频、Whisper ASR、转写引用写包，并用 `information_value` 标记 `useful`、`low_value`、`review_needed`、`needs_ocr`。已按 GuGU 授权允许 `yt-dlp` 使用 Chrome cookie；本机可用 ASR 后端是 `/Users/gugu/Library/Python/3.9/bin/mlx_whisper` 命令行。
+- 第三方抖音解析器默认禁用：`douyin.txt` 插件源码会把目标 URL 发给 `tiktokio.com` 并读 `.tk-down-link`，只能在 GuGU 明确允许后作为外部备用方案。
+- 视频号在 V0.2.5 只保留默认禁用占位，不进入真实采集队列。
+
+### V0.2.5 三方审查修复（2026-05-30）
+
+四项修复已合入 `codex/v025-collector-rebuild`，由 Codex + Hermes + Antigravity 交叉审查一致通过：
+
+- **P2 浏览器 session 泄漏**：`collector.py` 的 `_run_sequence` 加 `TimeoutExpired`/`FileNotFoundError` 捕获，task 循环加 `try/finally` 确保 close。
+- **P1 配置传递链**：打通前端 → API → CLI → collector 的 platforms/queries/override 全链路，`PUT config` 时 `_sync_collect_json` 解决配置双重存储。
+- **P1 空资料包**：`_bundle_command` 改为 `_copy_latest_bundle_script`，查找最近真实 bundle，`raw_items=0` 时跳过。
+- **UX 关键词拦截**：前端加关键词为空前置拦截 + fetch body 传 `queries` 字段。
 
 ### Web 与权重原则
 
@@ -58,7 +85,7 @@ Codex 是主脑，Hermes（DeepSeek）和 Antigravity（Gemini）是子 agent。
 
 ---
 
-## 4. 架构分层（V0.2.4 实际文件映射）
+## 4. 架构分层（V0.2.5 实际文件映射）
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -89,13 +116,17 @@ Codex 是主脑，Hermes（DeepSeek）和 Antigravity（Gemini）是子 agent。
 │  storage.py           SQLite + 候选状态管理        │
 ├─────────────────────────────────────────────────┤
 │  API & Server（服务层）                           │
-│  admin_api.py         V0.2.4 FastAPI /api/v1/*    │
+│  admin_api.py         FastAPI /api/v1/* + CHANGELOG解析 │
 │  server.py            V0.1 旧静态 HTTP（备用）      │
 │  api.py               payload 组装 + 旧 /api/* 兼容│
 ├─────────────────────────────────────────────────┤
 │  Frontend（前端）                                 │
 │  web/                 V0.1 旧静态 HTML/CSS/JS      │
-│  web-admin/           V0.2.4 React/Vite + shadcn   │
+│  web-admin/           React/Vite + 16 UI 组件      │
+├─────────────────────────────────────────────────┤
+│  V0.2.5 Collector Subprojects（双模式采集子项目） │
+│  aetherflux_shellCLI/ OpenCLI/脚本主导 + agent监工│
+│  aetherflux_agentCLI/ agent主导 + OpenCLI辅助     │
 ├─────────────────────────────────────────────────┤
 │  CLI & Pipeline（入口）                           │
 │  cli.py               命令入口                     │
@@ -159,11 +190,13 @@ Codex 是主脑，Hermes（DeepSeek）和 Antigravity（Gemini）是子 agent。
 
 | 命令 | 说明 |
 |------|------|
-| `python3 -m aetherflux.cli serve` | 启动 V0.2.4 FastAPI 后台（默认 127.0.0.1:8788） |
+| `python3 -m aetherflux.cli serve` | 启动 V0.2.5 FastAPI 后台（默认 127.0.0.1:8788） |
 | `python3 -m aetherflux.cli legacy-serve` | V0.1 旧静态后台（备用） |
 | `python3 -m aetherflux.cli ingest` | 样本采集与评分 |
 | `python3 -m aetherflux.cli review` | 生成审议草稿 |
-| `python3 -m aetherflux.cli opencli-rotate` | OpenCLI 采集轮转 |
+| `python3 -m aetherflux_shellcli.cli run` | shellCLI 真实采集（脚本主导） |
+| `python3 -m aetherflux_agentcli.cli run` | agentCLI 真实采集（agent 主导 + OpenCLI 辅助） |
+| `python3 -m aetherflux.cli opencli-rotate` | OpenCLI 采集轮转（V0.2.3 旧入口，V0.2.5 Web 后台已不再使用） |
 | `python3 -m aetherflux.cli live-rotate` | CDP 采集轮转（旧） |
 | `scripts/hermes_collect_opencli.sh` | Hermes 完整采集流程 |
 | `npm run build && npm test` | 前端构建 + 测试 |
@@ -196,15 +229,15 @@ DeepSeek 配置：`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL_ADV
 - `GET/POST /api/v1/trash` / `/api/v1/trash/restore` / `/api/v1/trash/mark-cleanable`
 - `GET /api/v1/system/status` / `/api/v1/system/deepseek-smoke-test` / `/api/v1/system/opencli-doctor` / `/api/v1/system/diagnose`
 - `GET /api/v1/title-pool` / `/api/v1/video-processing`
-- `GET /api/v1/agent/apis` / `/api/v1/release/status`
+- `GET /api/v1/agent/apis` / `/api/v1/release/status`（版本 + GitHub 链接 + 结构化 CHANGELOG）
 
 旧 `/api/*` 只做旧壳兼容，V0.2.4 主接口已统一迁移到 `/api/v1/*`。
 
 ---
 
-## 9. 当前限制（V0.2.4）
+## 9. 当前限制（V0.2.5）
 
-- 视频号无稳定网页端内容入口，暂时跳过。
+- 视频号无稳定网页端内容入口，V0.2.5 仅保留禁用占位，不进入真实采集队列。
 - 小红书/抖音采集依赖 OpenCLI Browser Bridge + Chrome 登录态，采集稳定性仍在打磨。
 - `data/seed_items.json` 只是样本输入，不是真实平台采集器。
 - PC worker 部署方案未完成。

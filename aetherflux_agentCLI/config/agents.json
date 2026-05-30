@@ -1,0 +1,11 @@
+{
+  "default_agent": "hermes",
+  "agents": {
+    "hermes": {
+      "role": "browser_operator",
+      "command": ["hermes", "-z", "{payload}", "--provider", "deepseek", "--model", "deepseek-v4-pro"],
+      "timeout_seconds": null,
+      "expects_json": true
+    }
+  }
+}

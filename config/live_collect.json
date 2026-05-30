@@ -1,6 +1,8 @@
 {
   "platforms": [
-    "xiaohongshu"
+    "xiaohongshu",
+    "douyin",
+    "shipinghao"
   ],
   "manual_queries": [
     "阳朔 旅游",
